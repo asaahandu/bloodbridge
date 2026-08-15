@@ -30,12 +30,14 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files (MongoDB credentials must never be committed)
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 
 # generated native folders
-/ios
-/android
+/mobile/ios
+/mobile/android

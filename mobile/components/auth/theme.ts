@@ -1,0 +1,16 @@
+export const authColors = {
+  background: '#F4F3F0',
+  black: '#121212',
+  card: '#FFFFFF',
+  error: '#B42318',
+  errorSoft: '#FEF3F2',
+  field: '#FAFAF9',
+  line: '#E4E2DD',
+  muted: '#706F6B',
+  red: '#8E1722',
+  redDark: '#681019',
+  redSoft: '#F6E9EA',
+  success: '#1F6A4C',
+  successSoft: '#EAF5EF',
+  white: '#FFFFFF',
+} as const;
