@@ -1,31 +1,48 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import { AuthTextField } from '@/components/auth/AuthTextField';
 import { authColors } from '@/components/auth/theme';
+import { loginUser } from '@/lib/api';
+import { saveAuthenticatedUser } from '@/lib/auth-session';
 
 type LoginErrors = Partial<Record<'email' | 'password', string>>;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { created } = useLocalSearchParams<{ created?: string }>();
+  const { created, located } = useLocalSearchParams<{ created?: string; located?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [errors, setErrors] = useState<LoginErrors>({});
+  const [serverError, setServerError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
+    if (submitting) return;
+
     const nextErrors: LoginErrors = {};
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Enter a valid email address.';
     if (!password) nextErrors.password = 'Enter your password.';
     setErrors(nextErrors);
 
-    if (Object.keys(nextErrors).length === 0) {
-      router.replace('/home');
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setSubmitting(true);
+    setServerError('');
+
+    try {
+      const user = await loginUser({ email: email.trim().toLowerCase(), password });
+      await saveAuthenticatedUser(user);
+      const dashboard = user.role === 'hospital' ? '/hospitals' : '/donors';
+      router.replace(dashboard as Href);
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : 'Unable to sign in.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -49,7 +66,18 @@ export default function LoginScreen() {
             <View className="flex-row items-center gap-[9px] rounded-xl bg-success-soft p-3">
               <Ionicons color={authColors.success} name="checkmark-circle" size={19} />
               <Text className="flex-1 text-[13px] font-bold leading-[18px] text-success">
-                Account details saved. You can now sign in.
+                {located === '1'
+                  ? 'Your account and location were saved. You can now sign in.'
+                  : 'Account details saved. You can now sign in.'}
+              </Text>
+            </View>
+          ) : null}
+
+          {serverError ? (
+            <View className="flex-row items-start gap-[9px] rounded-xl bg-error-soft p-3">
+              <Ionicons color={authColors.error} name="alert-circle" size={19} />
+              <Text className="flex-1 text-[13px] font-bold leading-[18px] text-error">
+                {serverError}
               </Text>
             </View>
           ) : null}
@@ -63,6 +91,7 @@ export default function LoginScreen() {
             label="Email address"
             onChangeText={(value) => {
               setEmail(value);
+              if (serverError) setServerError('');
               if (errors.email) setErrors((current) => ({ ...current, email: undefined }));
             }}
             placeholder="you@example.com"
@@ -77,6 +106,7 @@ export default function LoginScreen() {
             label="Password"
             onChangeText={(value) => {
               setPassword(value);
+              if (serverError) setServerError('');
               if (errors.password) setErrors((current) => ({ ...current, password: undefined }));
             }}
             onSubmitEditing={submit}
@@ -86,21 +116,7 @@ export default function LoginScreen() {
             value={password}
           />
 
-          <View className="flex-row items-center justify-between">
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: rememberMe }}
-              className="flex-row items-center gap-2 active:opacity-75"
-              onPress={() => setRememberMe((selected) => !selected)}
-              >
-              <View
-                className={`h-5 w-5 items-center justify-center rounded-[5px] border-[1.5px] ${
-                  rememberMe ? 'border-blood-red bg-blood-red' : 'border-[#C9C6C0]'
-                }`}>
-                {rememberMe ? <Ionicons color={authColors.white} name="checkmark" size={14} /> : null}
-              </View>
-              <Text className="text-[13px] font-semibold text-muted">Remember me</Text>
-            </Pressable>
+          <View className="flex-row items-center justify-end">
             <Pressable
               className="active:opacity-75"
               onPress={() =>
@@ -115,10 +131,23 @@ export default function LoginScreen() {
 
           <Pressable
             accessibilityRole="button"
-            className="h-14 flex-row items-center justify-center gap-[9px] rounded-[15px] bg-ink shadow-lg active:opacity-75"
+            accessibilityState={{ disabled: submitting }}
+            className={`h-14 flex-row items-center justify-center gap-[9px] rounded-[15px] bg-ink shadow-lg active:opacity-75 ${
+              submitting ? 'opacity-60' : ''
+            }`}
+            disabled={submitting}
             onPress={submit}>
-            <Text className="text-[15px] font-extrabold text-white">Sign in</Text>
-            <Ionicons color={authColors.white} name="arrow-forward" size={19} />
+            {submitting ? (
+              <>
+                <ActivityIndicator color={authColors.white} size="small" />
+                <Text className="text-[15px] font-extrabold text-white">Signing in...</Text>
+              </>
+            ) : (
+              <>
+                <Text className="text-[15px] font-extrabold text-white">Sign in</Text>
+                <Ionicons color={authColors.white} name="arrow-forward" size={19} />
+              </>
+            )}
           </Pressable>
 
           <View className="flex-row items-center justify-center gap-[7px]">

@@ -8,7 +8,10 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "check": "node --check src/server.js"
+    "check": "node --check src/server.js",
+    "test": "node --test",
+    "export:matching-training-data": "node scripts/export-matching-training-data.js",
+    "seed:matching-data": "node scripts/seed-matching-data.js"
   },
   "engines": {
     "node": ">=20.19.0"
@@ -19,7 +22,9 @@
     "express": "^5.2.1",
     "helmet": "^8.3.0",
     "mongoose": "^9.9.2",
-    "morgan": "^1.11.0"
+    "morgan": "^1.11.0",
+    "nodemailer": "^7.0.0",
+    "openai": "^7.5.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

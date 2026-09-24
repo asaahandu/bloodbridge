@@ -21,8 +21,12 @@ export function DonorHeader({
           <View className="h-[26px] w-[26px] items-center justify-center rounded-lg bg-blood-red">
             <Ionicons name="water" size={16} color="#FFFFFF" />
           </View>
-          <Text className="text-xs font-extrabold tracking-[1.7px] text-blood-red">
+          <Text className="text-base font-extrabold tracking-[1.7px] text-blood-red">
             BLOODBRIDGE
+          </Text>
+          <Text className="text-[11px] font-semibold text-muted">|</Text>
+          <Text className="text-[10px] font-bold tracking-[1px] text-muted">
+            DONOR DASHBOARD
           </Text>
         </View>
         <Text className="text-[25px] font-bold tracking-[-0.6px] text-ink">

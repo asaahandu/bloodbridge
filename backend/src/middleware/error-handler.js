@@ -21,7 +21,7 @@ export function errorHandler(error, _request, response, _next) {
   if (error?.code === 11000) {
     statusCode = 409;
     message = 'A record with those details already exists';
-    details = error.keyValue;
+    details = Object.keys(error.keyPattern ?? error.keyValue ?? {});
   }
 
   if (statusCode >= 500) {

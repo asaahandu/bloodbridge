@@ -4,5 +4,7 @@ export type BloodRequest = {
   distance: string;
   hospital: string;
   location: string;
+  neededBy?: string;
+  urgency?: 'standard' | 'urgent' | 'critical';
   urgent?: boolean;
 };

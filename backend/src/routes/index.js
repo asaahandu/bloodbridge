@@ -1,11 +1,11 @@
 import { Router } from 'express';
 
+import { aiChatRouter } from './ai-chat.routes.js';
 import { bloodRequestRouter } from './blood-request.routes.js';
-import { donorRouter } from './donor.routes.js';
-import { healthRouter } from './health.routes.js';
+import { userRouter } from './user.routes.js';
 
 export const apiRouter = Router();
 
-apiRouter.use('/health', healthRouter);
-apiRouter.use('/donors', donorRouter);
+apiRouter.use('/ai/chat', aiChatRouter);
+apiRouter.use('/users', userRouter);
 apiRouter.use('/blood-requests', bloodRequestRouter);

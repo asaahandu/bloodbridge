@@ -3,15 +3,21 @@ import { Pressable, Text, View } from 'react-native';
 type DonorStatusCardProps = {
   available: boolean;
   bloodType: string;
+  eligible?: boolean;
   matchCount: number;
+  nextEligibleDate?: string;
   onAvailabilityChange: (available: boolean) => void;
+  successfulDonations?: number;
 };
 
 export function DonorStatusCard({
   available,
   bloodType,
+  eligible = true,
   matchCount,
+  nextEligibleDate,
   onAvailabilityChange,
+  successfulDonations = 0,
 }: DonorStatusCardProps) {
   return (
     <View className="mb-[30px] overflow-hidden rounded-[25px] bg-ink p-[22px]">
@@ -22,7 +28,7 @@ export function DonorStatusCard({
             DONOR STATUS
           </Text>
           <Text className="text-[22px] font-bold tracking-[-0.4px] text-white">
-            Ready to save a life?
+            {eligible ? "You're eligible to donate" : `Next eligible: ${nextEligibleDate ?? 'TBC'}`}
           </Text>
         </View>
         <View className="h-[49px] w-[49px] items-center justify-center rounded-[17px] bg-blood-red">
@@ -30,22 +36,36 @@ export function DonorStatusCard({
         </View>
       </View>
 
-      <Text className="mb-[22px] mt-[15px] max-w-[88%] text-sm leading-[21px] text-[#B9B9B6]">
-        Your profile matches {matchCount} active requests near you. Make yourself available to
-        receive alerts.
+      <Text className="mt-[15px] max-w-[88%] text-sm leading-[21px] text-[#B9B9B6]">
+        {eligible
+          ? `Your profile matches ${matchCount} active requests near you.`
+          : 'You can still review nearby requests while you wait.'}
       </Text>
+
+      <View className="mb-[18px] mt-4 flex-row items-center gap-3 rounded-[14px] bg-[#242424] px-4 py-3">
+        <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#30302F]">
+          <Text className="text-sm font-extrabold text-[#F5A3AA]">{successfulDonations}</Text>
+        </View>
+        <View className="flex-1">
+          <Text className="text-xs font-bold text-white">
+            {successfulDonations === 1 ? 'Confirmed donation' : 'Confirmed donations'}
+          </Text>
+          <Text className="mt-0.5 text-[9px] text-[#AAA9A6]">Verified by hospital outcomes</Text>
+        </View>
+      </View>
 
       <Pressable
         accessibilityRole="switch"
-        accessibilityState={{ checked: available }}
+        accessibilityState={{ checked: available, disabled: !eligible }}
         className="flex-row items-center justify-between rounded-[15px] bg-[#242424] px-[15px] py-[13px] active:opacity-75"
+        disabled={!eligible}
         onPress={() => onAvailabilityChange(!available)}>
         <View className="flex-row items-center gap-[9px]">
           <View
             className={`h-[9px] w-[9px] rounded-full ${available ? 'bg-[#57B86A]' : 'bg-[#777777]'}`}
           />
           <Text className="text-sm font-semibold text-white">
-            {available ? 'Available to donate' : 'Not available'}
+            {!eligible ? 'Temporarily ineligible' : available ? 'Available to donate' : 'Not available'}
           </Text>
         </View>
         <View
