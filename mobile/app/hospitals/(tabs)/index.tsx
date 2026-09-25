@@ -5,9 +5,9 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  ActiveRequestsSection,
-  AttentionNeededSection,
-  type HospitalRequest,
+    ActiveRequestsSection,
+    AttentionNeededSection,
+    type HospitalRequest,
 } from '@/components/hospital-dashboard';
 import { useHospitalRequests } from '@/lib/hospital-data-hooks';
 import { formatElapsed, toHospitalRequest } from '@/lib/hospital-request-view';
@@ -57,7 +57,8 @@ export default function HospitalDashboardScreen() {
           </View>
           <Pressable
             accessibilityLabel="Open notifications"
-            className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-card active:opacity-75">
+            className="h-12 w-12 items-center justify-center rounded-2xl border border-line bg-card active:opacity-75"
+            onPress={() => router.push('/notifications')}>
             <Ionicons color="#121212" name="notifications-outline" size={23} />
             <View className="absolute right-[11px] top-2.5 h-[9px] w-[9px] rounded-full border-2 border-card bg-blood-red" />
           </Pressable>

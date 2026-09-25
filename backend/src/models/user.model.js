@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import { BLOOD_TYPES } from '../constants/blood-types.js';
+import { DONOR_BLOOD_TYPES } from '../constants/blood-types.js';
 
 export const USER_GENDERS = ['female', 'male', 'non-binary', 'prefer-not-to-say'];
 export const USER_ROLES = ['donor', 'hospital'];
@@ -174,7 +174,7 @@ const userSchema = new mongoose.Schema(
     },
     bloodType: {
       type: String,
-      enum: BLOOD_TYPES,
+      enum: DONOR_BLOOD_TYPES,
       required() {
         return this.role === 'donor';
       },

@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { AiChatLauncher } from '@/components/ai-chat';
+import { PushNotificationRegistrar } from '@/components/notifications/PushNotificationRegistrar';
 
 const palette = {
   active: '#8E1722',
@@ -12,8 +13,12 @@ const palette = {
 };
 
 export default function HospitalTabsLayout() {
+  const pathname = usePathname();
+  const isMessagesRoute = pathname.endsWith('/messages');
+
   return (
     <View className="flex-1">
+      <PushNotificationRegistrar />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -93,11 +98,15 @@ export default function HospitalTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="history"
+        name="messages"
         options={{
-          title: 'History',
+          title: 'Messages',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons color={color} name={focused ? 'time' : 'time-outline'} size={22} />
+            <Ionicons
+              color={color}
+              name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+              size={21}
+            />
           ),
         }}
       />
@@ -111,7 +120,7 @@ export default function HospitalTabsLayout() {
         }}
       />
       </Tabs>
-      <AiChatLauncher audience="hospital" />
+      {isMessagesRoute ? null : <AiChatLauncher audience="hospital" />}
     </View>
   );
 }

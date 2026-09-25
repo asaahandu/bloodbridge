@@ -1,15 +1,18 @@
-import {
-  COMPATIBLE_DONOR_BLOOD_TYPES,
-  DONOR_SEARCH_RADIUS_KM,
-} from '../constants/blood-compatibility.js';
 import { env } from '../config/env.js';
+import {
+    COMPATIBLE_DONOR_BLOOD_TYPES,
+    DONOR_SEARCH_RADIUS_KM,
+} from '../constants/blood-compatibility.js';
 import { AIResult } from '../models/ai-result.model.js';
 import { BloodRequest } from '../models/blood-request.model.js';
 import { DonorRequestActivity } from '../models/donor-request-activity.model.js';
 import { User } from '../models/user.model.js';
 import { AppError } from '../utils/app-error.js';
 import { MATCHING_MODEL_VERSION, rankDonorCandidates } from './donor-matching.service.js';
-import { dispatchMatchNotifications } from './notification.service.js';
+import {
+    dispatchMatchNotifications,
+    dispatchRequestEvent,
+} from './notification.service.js';
 
 function emptyDonorProgress() {
   return { notified: 0, responded: 0, confirmed: 0 };
@@ -318,6 +321,13 @@ export async function findHospitalRequestDonorMatches(requestId, hospitalId) {
     ).catch((error) => {
       console.error('Matched donor notification delivery failed', error);
     });
+    void dispatchRequestEvent({
+      bloodRequest,
+      type: 'donor_matching_complete',
+      recipients: [{ id: bloodRequest.hospitalId, role: 'hospital' }],
+    }).catch((error) => {
+      console.error('Hospital matching notification delivery failed', error);
+    });
   }
 
   return {
@@ -396,7 +406,7 @@ export async function recordDonorResponse(requestId, donorId, decision) {
   }
 
   const bloodRequest = await BloodRequest.findOne({ _id: requestId, status: 'active' })
-    .select('_id')
+    .select('_id hospitalId hospitalName bloodType')
     .lean();
   if (!bloodRequest) throw new AppError('Active blood request not found', 404);
 
@@ -411,6 +421,31 @@ export async function recordDonorResponse(requestId, donorId, decision) {
   if (decision === 'declined') activity.confirmedAt = undefined;
   await activity.save();
 
+  const responseSummary = await DonorRequestActivity.aggregate([
+    { $match: { requestId: bloodRequest._id } },
+    {
+      $group: {
+        _id: null,
+        rankedDonors: { $sum: 1 },
+        accepted: { $sum: { $cond: [{ $eq: ['$decision', 'accepted'] }, 1, 0] } },
+        declined: { $sum: { $cond: [{ $eq: ['$decision', 'declined'] }, 1, 0] } },
+      },
+    },
+  ]);
+  const summary = responseSummary[0] ?? { rankedDonors: 0, accepted: 0, declined: 0 };
+  const pending = Math.max(0, summary.rankedDonors - summary.accepted - summary.declined);
+  void dispatchRequestEvent({
+    bloodRequest,
+    type: 'donor_response_summary',
+    notificationContent: {
+      title: 'Donor responses updated',
+      body: `${summary.accepted} accepted, ${summary.declined} declined, ${pending} pending of ${summary.rankedDonors} ranked donor(s).`,
+    },
+    recipients: [{ id: bloodRequest.hospitalId, role: 'hospital' }],
+  }).catch((error) => {
+    console.error('Hospital donor response notification delivery failed', error);
+  });
+
   return {
     requestId: String(requestId),
     decision: activity.decision,
@@ -421,7 +456,7 @@ export async function recordDonorResponse(requestId, donorId, decision) {
 
 export async function confirmDonorResponse(requestId, donorId, hospitalId) {
   const bloodRequest = await BloodRequest.findOne({ _id: requestId, hospitalId, status: 'active' })
-    .select('_id')
+    .select('_id hospitalName bloodType')
     .lean();
   if (!bloodRequest) throw new AppError('Active blood request not found', 404);
 
@@ -433,6 +468,17 @@ export async function confirmDonorResponse(requestId, donorId, hospitalId) {
   if (!activity.confirmedAt) {
     activity.confirmedAt = new Date();
     await activity.save();
+    void dispatchRequestEvent({
+      bloodRequest: {
+        ...bloodRequest,
+        hospitalName: bloodRequest.hospitalName,
+        bloodType: bloodRequest.bloodType,
+      },
+      type: 'donor_confirmed',
+      recipients: [{ id: donorId, role: 'donor' }],
+    }).catch((error) => {
+      console.error('Donor confirmation notification delivery failed', error);
+    });
   }
 
   return getHospitalBloodRequest(requestId, hospitalId);
@@ -444,7 +490,7 @@ export async function recordDonorOutcome(requestId, donorId, hospitalId, outcome
   }
 
   const bloodRequest = await BloodRequest.findOne({ _id: requestId, hospitalId })
-    .select('_id')
+    .select('_id hospitalName bloodType')
     .lean();
   if (!bloodRequest) throw new AppError('Blood request not found', 404);
 
@@ -460,6 +506,14 @@ export async function recordDonorOutcome(requestId, donorId, hospitalId, outcome
   activity.outcome = outcome;
   activity.outcomeRecordedAt = outcomeRecordedAt;
   await activity.save();
+
+  void dispatchRequestEvent({
+    bloodRequest,
+    type: outcome === 'completed' ? 'donation_completed' : 'donation_no_show',
+    recipients: [{ id: donorId, role: 'donor' }],
+  }).catch((error) => {
+    console.error('Donor outcome notification delivery failed', error);
+  });
 
   if (outcome === 'completed') {
     await User.updateOne(

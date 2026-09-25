@@ -171,7 +171,9 @@ export default function DonorProfileScreen() {
         <View className="mt-6 rounded-[23px] bg-ink p-5">
           <View className="flex-row items-center gap-4">
             <View className="h-14 w-14 items-center justify-center rounded-[17px] bg-blood-red">
-              <Text className="text-lg font-extrabold text-white">{user?.bloodType ?? '—'}</Text>
+              <Text className="text-lg font-extrabold text-white">
+                {user?.bloodType === 'unknown' ? 'Not known' : (user?.bloodType ?? '—')}
+              </Text>
             </View>
             <View className="flex-1">
               <Text className="text-[17px] font-bold text-white">
@@ -200,7 +202,13 @@ export default function DonorProfileScreen() {
         </View>
 
         <ProfileSection title="Donation & eligibility">
-          <DetailRow icon="water-outline" label="Blood type" value={user?.bloodType ?? 'Not recorded'} />
+          <DetailRow
+            icon="water-outline"
+            label="Blood type"
+            value={
+              user?.bloodType === 'unknown' ? 'Not known' : (user?.bloodType ?? 'Not recorded')
+            }
+          />
           <View className="border-b border-line py-4">
             <Text className="text-[10px] font-semibold text-muted">Last whole-blood donation</Text>
             <View className="mt-2 flex-row items-center rounded-[13px] border border-line bg-[#FAFAF9] px-3">

@@ -34,14 +34,14 @@ function openNotification(notification: Notifications.Notification) {
   lastHandledNotificationId = notification.request.identifier;
 
   const url = notification.request.content.data?.url;
-  if (url === '/donors') router.push('/donors');
+  if (url === '/donors' || url === '/notifications') router.push('/notifications');
 }
 
 export async function registerPushNotificationsForCurrentDevice() {
   if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
 
   const session = await getAuthenticatedUser();
-  if (!session || session.role !== 'donor') return;
+  if (!session) return;
   if (session.notificationPreferences?.pushEnabled === false) return;
 
   if (Platform.OS === 'android') {

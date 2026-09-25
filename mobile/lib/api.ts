@@ -55,6 +55,30 @@ export type AuthenticatedUser = {
   };
 };
 
+export type MessageConversation = {
+  id: string;
+  requestId: string;
+  hospitalName: string;
+  internalReference: string;
+  bloodType: string;
+  donorId: string;
+  donorName: string;
+  donorBloodType?: string;
+  lastMessageBody: string;
+  lastMessageAt: string;
+};
+
+export type AppMessage = {
+  id: string;
+  conversationId: string;
+  requestId: string;
+  donorId: string;
+  senderId: string;
+  senderRole: 'donor' | 'hospital';
+  body: string;
+  createdAt: string;
+};
+
 type RegisterUserResponse = {
   data: {
     locationTrackingToken: string;
@@ -166,6 +190,32 @@ type CurrentUserResponse = {
   };
 };
 
+export type AppNotification = {
+  id: string;
+  type:
+    | 'blood_request_matched'
+    | 'donor_response_summary'
+    | 'donor_accepted'
+    | 'donor_declined'
+    | 'donor_confirmed'
+    | 'donation_completed'
+    | 'donation_no_show'
+    | 'donor_matching_complete';
+  title: string;
+  body: string;
+  requestId: string;
+  matchRank?: number;
+  readAt?: string;
+  createdAt: string;
+};
+
+type NotificationListResponse = {
+  data: {
+    unreadCount: number;
+    notifications: AppNotification[];
+  };
+};
+
 type DonorMatchPreviewResponse = {
   data: {
     estimatedDonors: number;
@@ -211,7 +261,7 @@ export type HospitalDonorDetail = {
     outcomeRecordedAt?: string;
   };
   eligibilityScreening: null | {
-    status: 'in_progress' | 'completed';
+    status: 'in_progress' | 'completed' | 'skipped';
     answerSummary: string;
     reviewFlags: string[];
     completedAt?: string;
@@ -253,7 +303,7 @@ type AiChatResponse = {
 export type AiEligibilityScreening = {
   id: string;
   requestId: string;
-  status: 'in_progress' | 'completed';
+  status: 'in_progress' | 'completed' | 'skipped';
   messages: Array<AiChatMessage & { id: string; createdAt: string }>;
   coveredTopics: string[];
   answerSummary: string;
@@ -350,6 +400,10 @@ function getApiBaseUrl() {
   if (developmentHost) return `http://${developmentHost}:4000/api/v1`;
 
   return 'http://localhost:4000/api/v1';
+}
+
+export function getRealtimeBaseUrl() {
+  return getApiBaseUrl().replace(/\/api\/v1\/?$/, '');
 }
 
 async function apiRequest<T>(path: string, options: RequestInit, timeoutMs = 15_000) {
@@ -500,6 +554,18 @@ export async function answerAiEligibilityScreening(
   return response.data;
 }
 
+export async function skipAiEligibilityScreening(authToken: string, requestId: string) {
+  const response = await apiRequest<AiEligibilityScreeningResponse>(
+    `/ai/chat/eligibility/${encodeURIComponent(requestId)}/skip`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` },
+    },
+  );
+
+  return response.data;
+}
+
 export async function listActiveBloodRequests(authToken: string) {
   const response = await apiRequest<BloodRequestListResponse>(
     '/blood-requests',
@@ -510,6 +576,43 @@ export async function listActiveBloodRequests(authToken: string) {
   );
 
   return response.data;
+}
+
+export async function listMessageConversations(authToken: string) {
+  const response = await apiRequest<{ data: MessageConversation[] }>('/messages/conversations', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+
+  return response.data;
+}
+
+export async function listMessages(authToken: string, requestId: string, donorId?: string) {
+  const response = await apiRequest<{ data: AppMessage[] }>(
+    `/messages/${encodeURIComponent(requestId)}${donorId ? `?donorId=${encodeURIComponent(donorId)}` : ''}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authToken}` },
+    },
+  );
+
+  return response.data;
+}
+
+export async function listNotifications(authToken: string) {
+  const response = await apiRequest<NotificationListResponse>('/notifications', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+
+  return response.data;
+}
+
+export async function markNotificationsRead(authToken: string) {
+  await apiRequest('/notifications/read', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
 }
 
 export async function listDonorActivity(authToken: string) {
@@ -523,7 +626,7 @@ export async function listDonorActivity(authToken: string) {
 
 export async function listHospitalBloodRequests(
   authToken: string,
-  status: 'active' | 'history' | 'all' = 'all',
+  status: 'active' | 'all' = 'all',
 ) {
   const response = await apiRequest<BloodRequestListResponse>(
     `/blood-requests/mine?status=${encodeURIComponent(status)}`,

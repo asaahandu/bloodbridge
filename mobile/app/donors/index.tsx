@@ -1,13 +1,13 @@
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  DonorHeader,
-  DonorStatusCard,
-  UrgentRequestsSection,
+    DonorHeader,
+    DonorStatusCard,
+    UrgentRequestsSection,
 } from '@/components/donor-home';
 import { useDonorResponses } from '@/components/donor-tabs';
 import { useDonorRequests } from '@/lib/donor-data-hooks';
@@ -38,6 +38,8 @@ export default function DonorDashboardScreen() {
       })
     : undefined;
   const firstName = user?.fullName.trim().split(/\s+/)[0] ?? 'Donor';
+  const bloodTypeLabel =
+    user?.bloodType && user.bloodType !== 'unknown' ? user.bloodType : 'Not known';
 
   const openEligibilityScreening = (requestId: string) => {
     router.navigate({
@@ -99,11 +101,11 @@ export default function DonorDashboardScreen() {
         <DonorHeader
           donorName={firstName}
           hasUnreadNotifications={requests.some((request) => !responseByRequest[request.id])}
-          onNotificationsPress={() => scrollRef.current?.scrollTo({ animated: true, y: 220 })}
+          onNotificationsPress={() => router.push('/notifications')}
         />
         <DonorStatusCard
           available={available}
-          bloodType={user?.bloodType ?? 'O+'}
+          bloodType={bloodTypeLabel}
           eligible={eligible}
           matchCount={requests.length}
           nextEligibleDate={nextEligibleDate}

@@ -13,7 +13,18 @@ import { saveLocationTrackingSession } from '@/lib/location-tracking-storage';
 
 const genderOptions = ['Female', 'Male', 'Non-binary', 'Prefer not to say'] as const;
 const roleOptions = ['Donor', 'Hospital'] as const;
-const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+const unknownBloodTypeLabel = "I don't know my blood type";
+const bloodTypes = [
+  'A+',
+  'A-',
+  'B+',
+  'B-',
+  'AB+',
+  'AB-',
+  'O+',
+  'O-',
+  unknownBloodTypeLabel,
+] as const;
 
 type Role = (typeof roleOptions)[number];
 type Gender = (typeof genderOptions)[number];
@@ -218,7 +229,9 @@ export default function SignUpScreen() {
     if (role === 'Donor' && !acceptedAlerts) {
       nextErrors.alerts = 'You must agree to receive alerts and notifications.';
     }
-    if (role === 'Donor' && !bloodType) nextErrors.bloodType = 'Choose your blood type.';
+    if (role === 'Donor' && !bloodType) {
+      nextErrors.bloodType = "Choose your blood type or select that you don't know it.";
+    }
     if (password.length < 8) nextErrors.password = 'Use at least 8 characters.';
     if (!confirmPassword) nextErrors.confirmPassword = 'Confirm your password.';
     else if (confirmPassword !== password) nextErrors.confirmPassword = 'Passwords do not match.';
@@ -241,7 +254,7 @@ export default function SignUpScreen() {
           ? {
               dateOfBirth: toApiDate(dateOfBirth),
               gender: apiGenderValues[gender],
-              bloodType,
+              bloodType: bloodType === unknownBloodTypeLabel ? 'unknown' : bloodType,
               receivesAlerts: true as const,
             }
           : {}),
@@ -431,9 +444,18 @@ export default function SignUpScreen() {
                 onToggle={() => toggleDropdown('bloodType')}
                 open={openDropdown === 'bloodType'}
                 options={bloodTypes}
-                placeholder="Select your blood type"
+                placeholder="Select your blood type or choose unknown"
                 value={bloodType}
               />
+              {bloodType === unknownBloodTypeLabel ? (
+                <View className="mt-3 flex-row items-start rounded-xl bg-white/70 p-3">
+                  <Ionicons color="#8E1722" name="information-circle-outline" size={17} />
+                  <Text className="ml-2 flex-1 text-[11px] font-semibold leading-[17px] text-muted">
+                    You can create your donor account, but BloodBridge cannot safely match you to
+                    blood requests until your blood type is confirmed.
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
 

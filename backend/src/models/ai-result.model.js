@@ -44,7 +44,7 @@ const aiResultSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['in_progress', 'completed'],
+      enum: ['in_progress', 'completed', 'skipped'],
       default: 'in_progress',
       required: true,
     },

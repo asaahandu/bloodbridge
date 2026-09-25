@@ -1,6 +1,8 @@
 import { env } from '../config/env.js';
 import { DonorRequestActivity } from '../models/donor-request-activity.model.js';
+import { User } from '../models/user.model.js';
 import { sendBloodRequestEmail } from './email.service.js';
+import { createRequestNotifications } from './notification-inbox.service.js';
 
 const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
 const MAX_EXPO_BATCH_SIZE = 100;
@@ -39,6 +41,83 @@ function buildNotificationContent(bloodRequest) {
     title: `${urgency} ${bloodType} blood request`,
     body: `${hospitalName}${locationText} needs a matching donor. Open BloodBridge to respond.`,
   };
+}
+
+function buildEventContent(type, bloodRequest, donorName) {
+  const requestLabel = `${bloodRequest.bloodType} request at ${bloodRequest.hospitalName}`;
+  const contentByType = {
+    donor_matching_complete: {
+      title: 'Donor matching complete',
+      body: `${bloodRequest.hospitalName} has been matched with eligible donors for the ${bloodRequest.bloodType} request.`,
+    },
+    donor_response_summary: {
+      title: 'Donor responses updated',
+      body: 'Review the latest ranked donor response summary in BloodBridge.',
+    },
+    donor_accepted: {
+      title: 'Donor accepted your request',
+      body: `${donorName} accepted the ${requestLabel}. Review the response in BloodBridge.`,
+    },
+    donor_declined: {
+      title: 'Donor declined your request',
+      body: `${donorName} is not available for the ${requestLabel}.`,
+    },
+    donor_confirmed: {
+      title: 'Hospital confirmed your donation',
+      body: `${bloodRequest.hospitalName} confirmed your response for the ${bloodRequest.bloodType} request.`,
+    },
+    donation_completed: {
+      title: 'Donation marked completed',
+      body: `${bloodRequest.hospitalName} recorded your ${bloodRequest.bloodType} donation as completed.`,
+    },
+    donation_no_show: {
+      title: 'Donation marked as no-show',
+      body: `${bloodRequest.hospitalName} recorded a no-show for the ${bloodRequest.bloodType} request.`,
+    },
+  };
+
+  return contentByType[type];
+}
+
+export async function dispatchRequestEvent({
+  bloodRequest,
+  type,
+  recipients,
+  donorName,
+  notificationContent,
+}) {
+  const content = notificationContent ?? buildEventContent(type, bloodRequest, donorName);
+  if (!content || recipients.length === 0) return;
+
+  const isNewNotification = await createRequestNotifications({
+    bloodRequest,
+    type,
+    title: content.title,
+    body: content.body,
+    recipients,
+  });
+  if (!isNewNotification) return;
+
+  const users = await User.find({ _id: { $in: recipients.map((recipient) => recipient.id) } })
+    .select('expoPushTokens notificationPreferences')
+    .lean();
+  const messages = users.flatMap((user) => {
+    if (user.notificationPreferences?.pushEnabled === false) return [];
+    return (user.expoPushTokens ?? []).filter((entry) => isExpoPushToken(entry.token)).map((entry) => ({
+      message: {
+        to: entry.token,
+        sound: 'default',
+        title: content.title,
+        body: content.body,
+        channelId: 'blood-requests',
+        data: { requestId: String(bloodRequest._id), url: '/notifications' },
+      },
+    }));
+  });
+
+  for (let index = 0; index < messages.length; index += MAX_EXPO_BATCH_SIZE) {
+    await sendExpoBatch(messages.slice(index, index + MAX_EXPO_BATCH_SIZE));
+  }
 }
 
 async function sendExpoBatch(messages) {
@@ -176,7 +255,7 @@ async function deliverPushNotifications(activities, content, bloodRequest) {
           priority: bloodRequest.urgency === 'standard' ? 'normal' : 'high',
           data: {
             requestId: String(bloodRequest._id),
-            url: '/donors',
+            url: '/notifications',
           },
         },
       });
@@ -254,6 +333,18 @@ export async function dispatchMatchNotifications(bloodRequest, donorIds) {
   });
   const validActivities = activities.filter((activity) => activity.donorId);
   const content = buildNotificationContent(bloodRequest);
+
+  await createRequestNotifications({
+    bloodRequest,
+    type: 'blood_request_matched',
+    title: content.title,
+    body: content.body,
+    recipients: validActivities.map((activity) => ({
+      id: activity.donorId._id,
+      role: 'donor',
+      matchRank: activity.matchRank,
+    })),
+  });
 
   await Promise.all([
     deliverPushNotifications(

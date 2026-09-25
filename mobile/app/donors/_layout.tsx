@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { View } from 'react-native';
 
 import { AiChatLauncher } from '@/components/ai-chat';
@@ -14,6 +14,9 @@ const palette = {
 };
 
 export default function DonorTabsLayout() {
+  const pathname = usePathname();
+  const isMessagesRoute = pathname.endsWith('/messages');
+
   return (
     <DonorResponseProvider>
       <PushNotificationRegistrar />
@@ -58,6 +61,20 @@ export default function DonorTabsLayout() {
             }}
           />
           <Tabs.Screen
+            name="messages"
+            options={{
+              title: 'Messages',
+              tabBarAccessibilityLabel: 'Messages',
+              tabBarIcon: ({ color, focused }) => (
+                <Ionicons
+                  color={color}
+                  name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+                  size={22}
+                />
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="profile"
             options={{
               title: 'Profile',
@@ -68,7 +85,7 @@ export default function DonorTabsLayout() {
             }}
           />
         </Tabs>
-        <AiChatLauncher audience="donor" />
+        {isMessagesRoute ? null : <AiChatLauncher audience="donor" />}
       </View>
     </DonorResponseProvider>
   );

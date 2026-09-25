@@ -1,9 +1,10 @@
 import { Router } from 'express';
 
 import {
-  answerEligibilityScreening,
-  createChatReply,
-  startEligibilityScreening,
+    answerEligibilityScreening,
+    createChatReply,
+    skipEligibilityScreening,
+    startEligibilityScreening,
 } from '../controllers/ai-chat.controller.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -16,5 +17,9 @@ aiChatRouter.post(
 aiChatRouter.post(
   '/eligibility/:requestId/messages',
   asyncHandler(answerEligibilityScreening),
+);
+aiChatRouter.post(
+  '/eligibility/:requestId/skip',
+  asyncHandler(skipEligibilityScreening),
 );
 aiChatRouter.post('/', asyncHandler(createChatReply));

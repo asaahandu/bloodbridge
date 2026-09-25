@@ -3,18 +3,18 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
+    ActivityIndicator,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    Text,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  getHospitalDonorResponseDetail,
-  type HospitalDonorDetail,
+    getHospitalDonorResponseDetail,
+    type HospitalDonorDetail,
 } from '@/lib/api';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 
@@ -85,6 +85,7 @@ export default function HospitalDonorDetailScreen() {
 
   const screening = detail?.eligibilityScreening;
   const screeningComplete = screening?.status === 'completed';
+  const screeningSkipped = screening?.status === 'skipped';
   const responseLabel = detail?.response.outcome
     ? detail.response.outcome === 'completed'
       ? 'Donation completed'
@@ -217,6 +218,8 @@ export default function HospitalDonorDetailScreen() {
                 className={`rounded-full px-2.5 py-1.5 ${
                   screeningComplete
                     ? 'bg-success-soft'
+                    : screeningSkipped
+                      ? 'bg-[#FBEDEE]'
                     : screening
                       ? 'bg-[#FFF3D6]'
                       : 'bg-[#EFEFED]'
@@ -225,11 +228,19 @@ export default function HospitalDonorDetailScreen() {
                   className={`text-[8px] font-extrabold tracking-[0.6px] ${
                     screeningComplete
                       ? 'text-success'
+                      : screeningSkipped
+                        ? 'text-blood-red'
                       : screening
                         ? 'text-[#8A6513]'
                         : 'text-muted'
                   }`}>
-                  {screeningComplete ? 'COMPLETED' : screening ? 'IN PROGRESS' : 'NOT STARTED'}
+                  {screeningComplete
+                    ? 'COMPLETED'
+                    : screeningSkipped
+                      ? 'NOT COMPLETED'
+                      : screening
+                        ? 'IN PROGRESS'
+                        : 'NOT STARTED'}
                 </Text>
               </View>
             </View>
@@ -280,11 +291,17 @@ export default function HospitalDonorDetailScreen() {
                   <Ionicons color="#737373" name="hourglass-outline" size={21} />
                 </View>
                 <Text className="mt-3 text-sm font-bold text-ink">
-                  {screening ? 'Screening is not complete yet' : 'No screening result yet'}
+                  {screeningSkipped
+                    ? 'Donor did not complete screening'
+                    : screening
+                      ? 'Screening is not complete yet'
+                      : 'No screening result yet'}
                 </Text>
                 <Text className="mt-1 text-[11px] leading-[17px] text-muted">
-                  {screening
-                    ? 'The answer summary will appear here after the donor completes every pre-screening topic.'
+                  {screeningSkipped
+                    ? 'The donor skipped the AI pre-screening. Hospital staff must complete the final eligibility assessment in person.'
+                    : screening
+                      ? 'The answer summary will appear here after the donor completes every pre-screening topic.'
                     : detail.response.decision === 'accepted'
                       ? 'The donor has accepted this request but has not started the AI pre-screening.'
                       : 'Eligibility pre-screening is started only after a donor accepts a request.'}
@@ -299,6 +316,25 @@ export default function HospitalDonorDetailScreen() {
                 decision. Complete the hospital&apos;s clinical assessment before donation.
               </Text>
             </View>
+            {detail.response.confirmedAt ? (
+              <Pressable
+                accessibilityRole="button"
+                className="mt-4 h-12 flex-row items-center justify-center gap-2 rounded-[14px] bg-ink active:opacity-75"
+                onPress={() =>
+                  router.push({
+                    pathname: '/hospitals/(tabs)/messages',
+                    params: {
+                      donorId,
+                      requestId,
+                      donorName: detail.donor.fullName,
+                      requestReference: detail.request.internalReference,
+                    },
+                  })
+                }>
+                <Ionicons color="#FFFFFF" name="chatbubble-outline" size={18} />
+                <Text className="text-xs font-extrabold text-white">Message donor</Text>
+              </Pressable>
+            ) : null}
           </>
         ) : null}
       </ScrollView>

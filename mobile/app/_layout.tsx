@@ -1,15 +1,15 @@
+import '@/lib/background-location';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 import '../global.css';
-import '@/lib/background-location';
 
 import { LocationTracker } from '@/components/location/LocationTracker';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+    // Catch any errors thrown by the Layout component.
+    ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -33,6 +33,7 @@ function RootLayoutNav() {
         <Stack.Screen name="location-setup/index" options={{ headerShown: false }} />
         <Stack.Screen name="donors" options={{ headerShown: false }} />
         <Stack.Screen name="hospitals" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="ai-chat/index" options={{ headerShown: false }} />
         <Stack.Screen name="modal/index" options={{ presentation: 'modal' }} />
       </Stack>

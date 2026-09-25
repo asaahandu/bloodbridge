@@ -1,13 +1,18 @@
+import { createServer } from 'node:http';
+
 import { app } from './app.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { env } from './config/env.js';
+import { attachSocketServer } from './socket.js';
 
 let server;
 
 async function startServer() {
   await connectDatabase();
 
-  server = app.listen(env.port, '0.0.0.0', () => {
+  server = createServer(app);
+  attachSocketServer(server);
+  server.listen(env.port, '0.0.0.0', () => {
     console.log(`BloodBridge API listening on http://localhost:${env.port}`);
   });
 }

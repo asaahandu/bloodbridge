@@ -42,3 +42,12 @@ export async function answerEligibilityScreening(request, response) {
   );
   response.json({ data: result });
 }
+
+export async function skipEligibilityScreening(request, response) {
+  const donor = await getAuthenticatedDonor(request);
+  const result = await aiEligibilityService.skipEligibilityScreening(
+    request.params.requestId,
+    donor,
+  );
+  response.json({ data: result });
+}

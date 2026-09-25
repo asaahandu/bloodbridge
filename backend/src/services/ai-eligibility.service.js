@@ -336,3 +336,17 @@ export async function answerEligibilityScreening(requestId, donor, messageInput)
   await result.save();
   return serializeResult(result);
 }
+
+export async function skipEligibilityScreening(requestId, donor) {
+  await getAcceptedActivity(requestId, donor._id);
+
+  const result = await AIResult.findOne({ requestId, donorId: donor._id });
+  if (!result) throw new AppError('Start the eligibility screening before skipping it', 409);
+  if (result.status === 'completed') {
+    throw new AppError('This eligibility screening has already been completed', 409);
+  }
+
+  result.status = 'skipped';
+  await result.save();
+  return serializeResult(result);
+}

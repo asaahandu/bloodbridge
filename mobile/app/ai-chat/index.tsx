@@ -3,24 +3,25 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { AiChatAudience } from '@/components/ai-chat';
 import {
-  answerAiEligibilityScreening,
-  sendAiChatMessage,
-  startAiEligibilityScreening,
-  type AiChatMessage as ApiChatMessage,
-  type AiEligibilityScreening,
+    answerAiEligibilityScreening,
+    sendAiChatMessage,
+    skipAiEligibilityScreening,
+    startAiEligibilityScreening,
+    type AiEligibilityScreening,
+    type AiChatMessage as ApiChatMessage,
 } from '@/lib/api';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 
@@ -77,7 +78,9 @@ export default function AiChatScreen() {
   const [isStarting, setIsStarting] = useState(isEligibilityScreening);
   const [startAttempt, setStartAttempt] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
-  const [screeningStatus, setScreeningStatus] = useState<'in_progress' | 'completed'>(
+  const [screeningStatus, setScreeningStatus] = useState<
+    'in_progress' | 'completed' | 'skipped'
+  >(
     'in_progress',
   );
   const [answerSummary, setAnswerSummary] = useState('');
@@ -124,6 +127,23 @@ export default function AiChatScreen() {
   const retryScreeningStart = () => {
     screeningStartedRef.current = false;
     setStartAttempt((current) => current + 1);
+  };
+
+  const skipScreening = async () => {
+    if (!isEligibilityScreening || !requestId || isSending || isStarting) return;
+
+    setErrorMessage('');
+    setIsSending(true);
+    try {
+      const session = await getAuthenticatedUser();
+      if (!session || session.role !== 'donor') throw new Error('Please sign in again as a donor.');
+      applyScreening(await skipAiEligibilityScreening(session.authToken, requestId));
+      closeChat();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Screening could not be skipped.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const closeChat = () => {
@@ -370,31 +390,42 @@ export default function AiChatScreen() {
               <Text className="text-[12px] font-extrabold text-white">Return to donor home</Text>
             </Pressable>
           ) : (
-            <View className="flex-row items-end rounded-[19px] border border-line bg-field p-2">
-              <TextInput
-                accessibilityLabel={isEligibilityScreening ? 'Screening answer' : 'AI message'}
-                className="max-h-28 min-h-[42px] flex-1 px-3 py-2.5 text-[13px] text-ink"
-                editable={!isSending && !isStarting}
-                maxLength={800}
-                multiline
-                onChangeText={setDraft}
-                placeholder={isEligibilityScreening ? 'Type your answer' : 'Message BloodBridge AI'}
-                placeholderTextColor="#8B8B88"
-                value={draft}
-              />
-              <Pressable
-                accessibilityLabel={isEligibilityScreening ? 'Send screening answer' : 'Send AI message'}
-                accessibilityRole="button"
-                className={`h-10 w-10 items-center justify-center rounded-[14px] ${canSend ? 'bg-accent active:opacity-75' : 'bg-[#D7D7D3]'}`}
-                disabled={!canSend}
-                onPress={() => void sendMessage()}>
-                {isSending ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Ionicons color="#FFFFFF" name="arrow-up" size={19} />
-                )}
-              </Pressable>
-            </View>
+            <>
+              {isEligibilityScreening ? (
+                <Pressable
+                  accessibilityRole="button"
+                  className="mb-2 self-center px-3 py-1.5 active:opacity-70"
+                  disabled={isSending || isStarting}
+                  onPress={() => void skipScreening()}>
+                  <Text className="text-[11px] font-extrabold text-muted">Skip screening</Text>
+                </Pressable>
+              ) : null}
+              <View className="flex-row items-end rounded-[19px] border border-line bg-field p-2">
+                <TextInput
+                  accessibilityLabel={isEligibilityScreening ? 'Screening answer' : 'AI message'}
+                  className="max-h-28 min-h-[42px] flex-1 px-3 py-2.5 text-[13px] text-ink"
+                  editable={!isSending && !isStarting}
+                  maxLength={800}
+                  multiline
+                  onChangeText={setDraft}
+                  placeholder={isEligibilityScreening ? 'Type your answer' : 'Message BloodBridge AI'}
+                  placeholderTextColor="#8B8B88"
+                  value={draft}
+                />
+                <Pressable
+                  accessibilityLabel={isEligibilityScreening ? 'Send screening answer' : 'Send AI message'}
+                  accessibilityRole="button"
+                  className={`h-10 w-10 items-center justify-center rounded-[14px] ${canSend ? 'bg-accent active:opacity-75' : 'bg-[#D7D7D3]'}`}
+                  disabled={!canSend}
+                  onPress={() => void sendMessage()}>
+                  {isSending ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Ionicons color="#FFFFFF" name="arrow-up" size={19} />
+                  )}
+                </Pressable>
+              </View>
+            </>
           )}
           <Text className="mt-2 text-center text-[9px] font-medium text-muted">
             {isEligibilityScreening

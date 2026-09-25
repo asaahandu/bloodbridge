@@ -10,9 +10,12 @@ import { useHospitalAccount } from '@/lib/hospital-data-hooks';
 
 export default function HospitalProfileScreen() {
   const router = useRouter();
-  const { error, loading, refresh, user } = useHospitalAccount();
+  const { error, loading, refresh, requests, user } = useHospitalAccount();
   const [matchAlerts, setMatchAlerts] = useState(true);
   const [criticalAlerts, setCriticalAlerts] = useState(true);
+
+  const fulfilledCount = requests.filter((request) => request.status === 'fulfilled').length;
+  const successRate = requests.length === 0 ? 0 : Math.round((fulfilledCount / requests.length) * 100);
 
   const signOut = async () => {
     await signOutAuthenticatedUser();
@@ -84,6 +87,22 @@ export default function HospitalProfileScreen() {
               </View>
             </View>
           ))}
+        </View>
+
+        <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Request analytics</Text>
+        <View className="flex-row gap-2.5">
+          <View className="flex-1 rounded-[19px] bg-ink p-4">
+            <Text className="text-[26px] font-extrabold text-white">{requests.length}</Text>
+            <Text className="mt-1 text-[10px] font-semibold text-[#AFAFAC]">Total requests</Text>
+          </View>
+          <View className="flex-1 rounded-[19px] border border-[#D7E9DE] bg-success-soft p-4">
+            <Text className="text-[26px] font-extrabold text-success">{fulfilledCount}</Text>
+            <Text className="mt-1 text-[10px] font-semibold text-success">Fulfilled</Text>
+          </View>
+          <View className="flex-1 rounded-[19px] border border-line bg-card p-4">
+            <Text className="text-[26px] font-extrabold text-ink">{successRate}%</Text>
+            <Text className="mt-1 text-[10px] font-semibold text-muted">Success rate</Text>
+          </View>
         </View>
 
         <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Notification preferences</Text>
