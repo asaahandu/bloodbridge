@@ -1,25 +1,28 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as DocumentPicker from 'expo-document-picker';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DonorSearchModal } from '@/components/hospital-dashboard';
 import { getDonorScanDurationMs } from '@/components/hospital-dashboard/donor-search-config';
 import {
-  type AuthenticatedUser,
-  createBloodRequest,
-  draftBloodRequest,
-  type DonorMatchScan,
-  getHospitalRequestDonorMatches,
+    type AuthenticatedUser,
+    createBloodRequest,
+    createHospitalCampaign,
+    type DonorMatchScan,
+    draftBloodRequest,
+    getHospitalRequestDonorMatches,
 } from '@/lib/api';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 
@@ -43,6 +46,9 @@ const draftFieldLabels = {
   urgency: 'urgency',
   internalReference: 'internal reference',
 } as const;
+const maximumCampaignImages = 5;
+const maximumCampaignImageSize = 5 * 1024 * 1024;
+const maximumCampaignImagesSize = 10 * 1024 * 1024;
 
 type SubmittedRequest = {
   bloodType: string;
@@ -51,7 +57,33 @@ type SubmittedRequest = {
   reference: string;
 };
 
+function isValidCampaignDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(`${value}T00:00:00`);
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === year &&
+    date.getMonth() + 1 === month &&
+    date.getDate() === day
+  );
+}
+
 export default function NewRequestScreen() {
+  const [requestTab, setRequestTab] = useState<'blood' | 'campaign'>('blood');
+  const [campaignTitle, setCampaignTitle] = useState('');
+  const [campaignDate, setCampaignDate] = useState('');
+  const [campaignLocation, setCampaignLocation] = useState('');
+  const [campaignImages, setCampaignImages] = useState<DocumentPicker.DocumentPickerAsset[]>([]);
+  const [campaignDescription, setCampaignDescription] = useState('');
+  const [campaignError, setCampaignError] = useState('');
+  const [campaignSuccess, setCampaignSuccess] = useState('');
+  const [campaignImagesLoading, setCampaignImagesLoading] = useState(false);
+  const [campaignSubmitting, setCampaignSubmitting] = useState(false);
   const [bloodType, setBloodType] = useState('O+');
   const [urgency, setUrgency] = useState<(typeof urgencyLevels)[number]>('Urgent');
   const [reference, setReference] = useState('');
@@ -80,7 +112,11 @@ export default function NewRequestScreen() {
 
     getAuthenticatedUser()
       .then((user) => {
-        if (active) setFacility(user?.role === 'hospital' ? user : null);
+        if (active) {
+          const hospital = user?.role === 'hospital' ? user : null;
+          setFacility(hospital);
+          if (hospital) setCampaignLocation((current) => current || hospital.cityRegion);
+        }
       })
       .finally(() => {
         if (active) setFacilityLoaded(true);
@@ -90,6 +126,91 @@ export default function NewRequestScreen() {
       active = false;
     };
   }, []);
+
+  const chooseCampaignImages = async () => {
+    if (campaignImagesLoading || campaignImages.length >= maximumCampaignImages) return;
+
+    setCampaignImagesLoading(true);
+    setCampaignError('');
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: true,
+        type: ['image/jpeg', 'image/png'],
+      });
+      if (result.canceled) return;
+
+      const nextImages = [...campaignImages, ...result.assets];
+      if (nextImages.length > maximumCampaignImages) {
+        setCampaignError('Choose no more than five images.');
+        return;
+      }
+      if (nextImages.some((image) => (image.size ?? 0) > maximumCampaignImageSize)) {
+        setCampaignError('Each image must be 5 MB or smaller.');
+        return;
+      }
+      if (nextImages.reduce((total, image) => total + (image.size ?? 0), 0) > maximumCampaignImagesSize) {
+        setCampaignError('Images must total 10 MB or less.');
+        return;
+      }
+
+      setCampaignImages(nextImages);
+    } catch {
+      setCampaignError('Unable to open the image picker. Please try again.');
+    } finally {
+      setCampaignImagesLoading(false);
+    }
+  };
+
+  const createCampaign = async () => {
+    if (campaignSubmitting) return;
+
+    setCampaignError('');
+    setCampaignSuccess('');
+    if (!campaignTitle.trim()) {
+      setCampaignError('Enter a campaign title.');
+      return;
+    }
+    if (!isValidCampaignDate(campaignDate)) {
+      setCampaignError('Enter a valid campaign date in YYYY-MM-DD format.');
+      return;
+    }
+    if (!campaignLocation.trim()) {
+      setCampaignError('Enter the campaign location.');
+      return;
+    }
+    if (!campaignDescription.trim()) {
+      setCampaignError('Add a description for the campaign.');
+      return;
+    }
+    if (!facility) {
+      setCampaignError('Sign in again as a hospital before creating a campaign.');
+      return;
+    }
+
+    setCampaignSubmitting(true);
+    try {
+      await createHospitalCampaign(facility.authToken, {
+        title: campaignTitle.trim(),
+        date: campaignDate,
+        location: campaignLocation.trim(),
+        description: campaignDescription.trim(),
+        images: campaignImages,
+      });
+      setCampaignTitle('');
+      setCampaignDate('');
+      setCampaignLocation(facility.cityRegion);
+      setCampaignImages([]);
+      setCampaignDescription('');
+      setCampaignSuccess('Campaign created and saved successfully.');
+    } catch (error) {
+      setCampaignError(
+        error instanceof Error ? error.message : 'Unable to save the campaign. Please try again.',
+      );
+    } finally {
+      setCampaignSubmitting(false);
+    }
+  };
 
   const scanForDonors = async (requestId: string, authToken: string, radiusKm: number) => {
     const scanRequestId = ++matchScanRequestId.current;
@@ -225,6 +346,181 @@ export default function NewRequestScreen() {
           </Text>
         </View>
 
+        <View className="mb-5 flex-row rounded-[14px] border border-line bg-[#F1F1EF] p-1">
+          {[
+            { label: 'New Blood Request', value: 'blood' as const },
+            { label: 'New Campaign', value: 'campaign' as const },
+          ].map((tab) => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: requestTab === tab.value }}
+              key={tab.value}
+              onPress={() => setRequestTab(tab.value)}
+              style={{
+                alignItems: 'center',
+                backgroundColor: requestTab === tab.value ? '#FFFFFF' : 'transparent',
+                borderRadius: 10,
+                flex: 1,
+                justifyContent: 'center',
+                minHeight: 44,
+                paddingHorizontal: 8,
+              }}>
+              <Text
+                className={`text-center text-[11px] font-bold ${
+                  requestTab === tab.value ? 'text-blood-red' : 'text-muted'
+                }`}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {requestTab === 'campaign' ? (
+          <View className="gap-5 rounded-[21px] border border-line bg-card p-5">
+            <View className="flex-row items-center gap-3">
+              <View className="h-11 w-11 items-center justify-center rounded-[14px] bg-blood-red-soft">
+                <Ionicons color="#8E1722" name="megaphone-outline" size={21} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-sm font-bold text-ink">Campaign details</Text>
+                <Text className="mt-1 text-[10px] text-muted">Share a community blood drive</Text>
+              </View>
+            </View>
+
+            <View>
+              <Text className="mb-2 text-xs font-bold text-ink">Campaign title</Text>
+              <TextInput
+                accessibilityLabel="Campaign title"
+                autoCapitalize="sentences"
+                className="h-12 rounded-[13px] border border-line bg-[#FAFAF9] px-3.5 text-sm text-ink"
+                maxLength={100}
+                onChangeText={setCampaignTitle}
+                placeholder="Example: Community blood donation day"
+                placeholderTextColor="#8B8B88"
+                value={campaignTitle}
+              />
+            </View>
+
+            <View>
+              <Text className="mb-2 text-xs font-bold text-ink">Date</Text>
+              <View className="h-12 flex-row items-center gap-3 rounded-[13px] border border-line bg-[#FAFAF9] px-3.5">
+                <Ionicons color="#737373" name="calendar-outline" size={18} />
+                <TextInput
+                  accessibilityLabel="Campaign date"
+                  className="flex-1 py-0 text-sm text-ink"
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                  onChangeText={setCampaignDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#8B8B88"
+                  value={campaignDate}
+                />
+              </View>
+            </View>
+
+            <View>
+              <Text className="mb-2 text-xs font-bold text-ink">Location</Text>
+              <View className="h-12 flex-row items-center gap-3 rounded-[13px] border border-line bg-[#FAFAF9] px-3.5">
+                <Ionicons color="#737373" name="location-outline" size={18} />
+                <TextInput
+                  accessibilityLabel="Campaign location"
+                  autoCapitalize="words"
+                  className="flex-1 py-0 text-sm text-ink"
+                  maxLength={160}
+                  onChangeText={setCampaignLocation}
+                  placeholder="Venue, city or region"
+                  placeholderTextColor="#8B8B88"
+                  value={campaignLocation}
+                />
+              </View>
+            </View>
+
+            <View>
+              <View className="mb-2 flex-row items-center justify-between">
+                <Text className="text-xs font-bold text-ink">Images</Text>
+                <Text className="text-[10px] text-muted">Optional · up to 5</Text>
+              </View>
+              <View className="flex-row flex-wrap gap-2">
+                {campaignImages.map((image, index) => (
+                  <View className="relative" key={`${image.uri}-${index}`}>
+                    <Image
+                      accessibilityLabel={image.name}
+                      className="h-[76px] w-[76px] rounded-[10px] bg-[#F1F1EF]"
+                      source={{ uri: image.uri }}
+                    />
+                    <Pressable
+                      accessibilityLabel={`Remove ${image.name}`}
+                      accessibilityRole="button"
+                      className="absolute -right-1 -top-1 h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-ink"
+                      onPress={() => setCampaignImages((current) => current.filter((_, imageIndex) => imageIndex !== index))}>
+                      <Ionicons color="#FFFFFF" name="close" size={13} />
+                    </Pressable>
+                  </View>
+                ))}
+                {campaignImages.length < maximumCampaignImages ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    className="h-[76px] w-[76px] items-center justify-center rounded-[10px] border border-dashed border-[#D8B7BA] bg-blood-red-soft active:opacity-75"
+                    disabled={campaignImagesLoading}
+                    onPress={() => void chooseCampaignImages()}>
+                    {campaignImagesLoading ? (
+                      <ActivityIndicator color="#8E1722" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons color="#8E1722" name="image-outline" size={21} />
+                        <Text className="mt-1 text-[9px] font-bold text-blood-red">Add image</Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+
+            <View>
+              <Text className="mb-2 text-xs font-bold text-ink">Description</Text>
+              <TextInput
+                accessibilityLabel="Campaign description"
+                className="min-h-[112px] rounded-[13px] border border-line bg-[#FAFAF9] px-3.5 py-3 text-sm leading-5 text-ink"
+                maxLength={1000}
+                multiline
+                onChangeText={setCampaignDescription}
+                placeholder="Tell donors what the campaign is for and how they can take part."
+                placeholderTextColor="#8B8B88"
+                textAlignVertical="top"
+                value={campaignDescription}
+              />
+              <Text className="mt-1 text-right text-[10px] text-muted">
+                {campaignDescription.length}/1000
+              </Text>
+            </View>
+
+            {campaignError ? (
+              <View className="flex-row items-start gap-2 rounded-[12px] bg-error-soft p-3">
+                <Ionicons color="#B42318" name="alert-circle-outline" size={17} />
+                <Text className="flex-1 text-[11px] font-semibold leading-[16px] text-error">
+                  {campaignError}
+                </Text>
+              </View>
+            ) : null}
+            {campaignSuccess ? (
+              <View className="flex-row items-start gap-2 rounded-[12px] bg-success-soft p-3">
+                <Ionicons color="#1F6A4C" name="checkmark-circle-outline" size={17} />
+                <Text className="flex-1 text-[11px] font-semibold leading-[16px] text-success">
+                  {campaignSuccess}
+                </Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              accessibilityRole="button"
+              className="h-12 flex-row items-center justify-center gap-2 rounded-[13px] bg-ink active:opacity-75"
+              onPress={createCampaign}>
+              <Text className="text-xs font-extrabold text-white">Create campaign</Text>
+              <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
+            </Pressable>
+          </View>
+        ) : (
+          <>
         <View className="mb-5 overflow-hidden rounded-[23px] bg-ink">
           <View className="flex-row items-start gap-3 p-5">
             <View className="h-11 w-11 items-center justify-center rounded-[14px] bg-[#2B2B2B]">
@@ -514,6 +810,8 @@ export default function NewRequestScreen() {
             </>
           )}
         </Pressable>
+          </>
+        )}
       </ScrollView>
 
       <DonorSearchModal

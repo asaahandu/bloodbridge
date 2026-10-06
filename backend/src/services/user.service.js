@@ -32,6 +32,9 @@ function serializeUser(user) {
     role: user.role,
     cityRegion: user.cityRegion,
     ...(user.bloodType ? { bloodType: user.bloodType } : {}),
+    ...(user.role === 'hospital'
+      ? { hospitalVerificationStatus: user.hospitalVerificationStatus ?? 'unverified' }
+      : {}),
     ...(user.role === 'donor' ? { donationProfile: serializeDonationProfile(user) } : {}),
     notificationPreferences: {
       pushEnabled: user.notificationPreferences?.pushEnabled ?? true,

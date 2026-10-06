@@ -23,11 +23,15 @@
     "helmet": "^8.3.0",
     "mongoose": "^9.9.2",
     "morgan": "^1.11.0",
+    "multer": "^2.4.0",
     "nodemailer": "^7.0.0",
     "openai": "^7.5.0",
     "socket.io": "^4.8.4"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "chai": "^6.3.0",
+    "mocha": "^12.0.3",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.3.1"
   }
 }

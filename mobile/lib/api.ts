@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import type { DocumentPickerAsset } from 'expo-document-picker';
 
 export type RegisterUserPayload = {
   fullName: string;
@@ -42,6 +43,7 @@ export type AuthenticatedUser = {
   phone: string;
   role: 'donor' | 'hospital';
   cityRegion: string;
+  hospitalVerificationStatus?: 'unverified' | 'pending' | 'rejected' | 'verified';
   bloodType?: string;
   donationProfile?: DonorDonationProfile;
   notificationPreferences?: {
@@ -382,6 +384,9 @@ function normalizeAuthenticatedUser(
     phone: user.phone ?? '',
     role: user.role ?? 'donor',
     cityRegion: user.cityRegion ?? '',
+    ...(user.role === 'hospital'
+      ? { hospitalVerificationStatus: user.hospitalVerificationStatus ?? 'unverified' }
+      : {}),
     ...(user.bloodType ? { bloodType: user.bloodType } : {}),
     ...(user.donationProfile ? { donationProfile: user.donationProfile } : {}),
     notificationPreferences: user.notificationPreferences ?? {
@@ -415,7 +420,7 @@ async function apiRequest<T>(path: string, options: RequestInit, timeoutMs = 15_
       ...options,
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...options.headers,
       },
       signal: controller.signal,
@@ -480,6 +485,43 @@ export async function getCurrentUser(session: AuthenticatedUser): Promise<Authen
   });
 
   return normalizeAuthenticatedUser(response.data.user, session.authToken);
+}
+
+export async function submitHospitalKycRequest(
+  authToken: string,
+  hospitalName: string,
+  documents: DocumentPickerAsset[],
+) {
+  const formData = new FormData();
+  formData.append('hospitalName', hospitalName);
+  documents.forEach((document) => {
+    if (document.file) {
+      formData.append('documents', document.file, document.name);
+    } else {
+      formData.append(
+        'documents',
+        {
+          uri: document.uri,
+          name: document.name,
+          type: document.mimeType ?? 'application/octet-stream',
+        } as unknown as Blob,
+      );
+    }
+  });
+
+  const response = await apiRequest<{
+    data: { status: 'pending'; documentCount: number; submittedAt: string };
+  }>(
+    '/kyc-requests',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: formData,
+    },
+    60_000,
+  );
+
+  return response.data;
 }
 
 export async function createBloodRequest(
@@ -799,4 +841,57 @@ export async function saveUserLocation(
     headers: { Authorization: `Bearer ${setup.token}` },
     body: JSON.stringify(location),
   });
+}
+
+export type CreateCampaignPayload = {
+  date: string;
+  description: string;
+  images: DocumentPickerAsset[];
+  location: string;
+  title: string;
+};
+
+export type CreatedCampaign = {
+  id: string;
+  title: string;
+  date: string;
+  location: string;
+  description: string;
+  images: { name: string; mimeType: string; size: number }[];
+  createdAt: string;
+};
+
+export async function createHospitalCampaign(authToken: string, payload: CreateCampaignPayload) {
+  const formData = new FormData();
+  formData.append('title', payload.title);
+  formData.append('date', payload.date);
+  formData.append('location', payload.location);
+  formData.append('description', payload.description);
+
+  payload.images.forEach((image) => {
+    if (image.file) {
+      formData.append('images', image.file, image.name);
+    } else {
+      formData.append(
+        'images',
+        {
+          uri: image.uri,
+          name: image.name,
+          type: image.mimeType ?? 'application/octet-stream',
+        } as unknown as Blob,
+      );
+    }
+  });
+
+  const response = await apiRequest<{ data: CreatedCampaign }>(
+    '/campaigns',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: formData,
+    },
+    60_000,
+  );
+
+  return response.data;
 }

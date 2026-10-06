@@ -38,6 +38,7 @@ From the project root, you can also run `npm run backend:dev`.
 | `PATCH` | `/api/v1/users/:userId/location` | Save the user's latest authorized location |
 | `GET` | `/api/v1/blood-requests` | List active hospital requests |
 | `POST` | `/api/v1/blood-requests` | Create a hospital request using a hospital Bearer token |
+| `POST` | `/api/v1/campaigns` | Create a hospital campaign with optional JPEG/PNG images using a hospital Bearer token |
 | `POST` | `/api/v1/blood-requests/draft` | Turn a plain-language description into a reviewable request draft |
 | `GET` | `/api/v1/blood-requests/mine` | List the authenticated hospital's requests |
 | `GET` | `/api/v1/blood-requests/mine/:requestId` | Get one request owned by the hospital |

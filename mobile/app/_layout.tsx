@@ -1,5 +1,5 @@
 import '@/lib/background-location';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 import '../global.css';

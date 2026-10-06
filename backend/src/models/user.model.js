@@ -172,6 +172,11 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Role is required'],
       index: true,
     },
+    hospitalVerificationStatus: {
+      type: String,
+      enum: ['unverified', 'pending', 'rejected', 'verified'],
+      default: 'unverified',
+    },
     bloodType: {
       type: String,
       enum: DONOR_BLOOD_TYPES,

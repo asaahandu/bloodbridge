@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KycRequestModal } from '@/components/hospital-kyc/KycRequestModal';
+import { submitHospitalKycRequest } from '@/lib/api';
 import { signOutAuthenticatedUser } from '@/lib/auth-session';
 import { useHospitalAccount } from '@/lib/hospital-data-hooks';
 
@@ -13,6 +15,7 @@ export default function HospitalProfileScreen() {
   const { error, loading, refresh, requests, user } = useHospitalAccount();
   const [matchAlerts, setMatchAlerts] = useState(true);
   const [criticalAlerts, setCriticalAlerts] = useState(true);
+  const [kycModalVisible, setKycModalVisible] = useState(false);
 
   const fulfilledCount = requests.filter((request) => request.status === 'fulfilled').length;
   const successRate = requests.length === 0 ? 0 : Math.round((fulfilledCount / requests.length) * 100);
@@ -25,6 +28,24 @@ export default function HospitalProfileScreen() {
   const locationValue = user?.location
     ? `${user.location.coordinates[1].toFixed(5)}, ${user.location.coordinates[0].toFixed(5)}`
     : 'GPS location not available';
+  const verificationStatus = user?.hospitalVerificationStatus;
+  const canSubmitKyc =
+    !!user && verificationStatus !== 'verified' && verificationStatus !== 'pending';
+  const verificationLabel = !user
+    ? 'Not available'
+    : verificationStatus === 'verified'
+      ? 'Verified'
+      : verificationStatus === 'pending'
+        ? 'Under review'
+        : verificationStatus === 'rejected'
+          ? 'Request declined'
+          : 'Not verified';
+
+  const submitKyc = async (hospitalName: string, documents: import('expo-document-picker').DocumentPickerAsset[]) => {
+    if (!user) throw new Error('Sign in again before submitting verification documents.');
+    await submitHospitalKycRequest(user.authToken, hospitalName, documents);
+    await refresh();
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
@@ -63,12 +84,38 @@ export default function HospitalProfileScreen() {
               <Text className="text-[17px] font-bold text-white">{user?.fullName ?? 'Hospital account'}</Text>
               <Text className="mt-1 text-[11px] text-[#AFAFAC]">BloodBridge hospital facility</Text>
             </View>
-            {user ? <Ionicons color="#73C59F" name="checkmark-circle" size={22} /> : null}
+            {verificationStatus === 'verified' ? (
+              <Ionicons color="#73C59F" name="checkmark-circle" size={22} />
+            ) : null}
           </View>
         </View>
 
         <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Facility details</Text>
         <View className="rounded-[21px] border border-line bg-card px-4">
+          <Pressable
+            accessibilityLabel={
+              canSubmitKyc ? 'Submit hospital verification documents' : `Verification status: ${verificationLabel}`
+            }
+            accessibilityRole={canSubmitKyc ? 'button' : undefined}
+            className={`flex-row items-center gap-3 border-b border-line py-4 ${canSubmitKyc ? 'active:opacity-70' : ''}`}
+            disabled={!canSubmitKyc}
+            onPress={() => setKycModalVisible(true)}>
+            <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#F1F1EF]">
+              <Ionicons color="#5F5F5C" name="shield-checkmark-outline" size={17} />
+            </View>
+            <View className="flex-1">
+              <Text className="text-[10px] font-semibold text-muted">Verification status</Text>
+              <Text className="mt-1 text-xs font-bold text-ink">{verificationLabel}</Text>
+              {canSubmitKyc ? (
+                <Text className="mt-1 text-[10px] font-semibold text-blood-red">
+                  {verificationStatus === 'rejected'
+                    ? 'Tap to resubmit documents'
+                    : 'Tap to submit verification documents'}
+                </Text>
+              ) : null}
+            </View>
+            {canSubmitKyc ? <Ionicons color="#8E1722" name="chevron-forward" size={18} /> : null}
+          </Pressable>
           {[
             ['location-outline', 'City or region', user?.cityRegion ?? 'Not available'],
             ['navigate-outline', 'Saved GPS location', locationValue],
@@ -148,6 +195,12 @@ export default function HospitalProfileScreen() {
           <Text className="text-xs font-extrabold text-blood-red">Sign out</Text>
         </Pressable>
       </ScrollView>
+      <KycRequestModal
+        initialHospitalName={user?.fullName ?? ''}
+        onClose={() => setKycModalVisible(false)}
+        onSubmit={submitKyc}
+        visible={kycModalVisible}
+      />
     </SafeAreaView>
   );
 }
