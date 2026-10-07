@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import { Campaign } from '../models/campaign.model.js';
 import { AppError } from '../utils/app-error.js';
 
@@ -62,6 +64,24 @@ function normalizeCampaignImages(files) {
   });
 }
 
+function serializeCampaign(campaign) {
+  return {
+    id: String(campaign._id),
+    title: campaign.title,
+    hospitalName: campaign.hospitalName,
+    date: campaign.date,
+    location: campaign.location,
+    description: campaign.description,
+    images: campaign.images.map(({ name, mimeType, size }, index) => ({
+      name,
+      mimeType,
+      size,
+      index,
+    })),
+    createdAt: campaign.createdAt,
+  };
+}
+
 export async function createCampaign(fields, files, hospital) {
   const campaignFields = normalizeCampaignFields(fields);
   const images = normalizeCampaignImages(files);
@@ -72,13 +92,36 @@ export async function createCampaign(fields, files, hospital) {
     images,
   });
 
-  return {
-    id: String(campaign._id),
-    title: campaign.title,
-    date: campaign.date,
-    location: campaign.location,
-    description: campaign.description,
-    images: campaign.images.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
-    createdAt: campaign.createdAt,
-  };
+  return serializeCampaign(campaign);
+}
+
+export async function listCampaigns() {
+  const campaigns = await Campaign.find().sort({ date: 1, createdAt: -1 }).lean();
+  return campaigns.map(serializeCampaign);
+}
+
+export async function getCampaign(campaignId) {
+  if (!mongoose.isValidObjectId(campaignId)) throw new AppError('Campaign not found', 404);
+
+  const campaign = await Campaign.findById(campaignId).lean();
+  if (!campaign) throw new AppError('Campaign not found', 404);
+
+  return serializeCampaign(campaign);
+}
+
+export async function getCampaignImage(campaignId, imageIndex) {
+  if (!mongoose.isValidObjectId(campaignId) || !/^\d+$/.test(imageIndex)) {
+    throw new AppError('Campaign image not found', 404);
+  }
+
+  const campaign = await Campaign.findById(campaignId).select(
+    'images.name images.mimeType images.size +images.content',
+  );
+  const image = campaign?.images[Number(imageIndex)];
+  if (!image) throw new AppError('Campaign image not found', 404);
+  if (!Buffer.isBuffer(image.content) || image.content.length === 0) {
+    throw new AppError('Campaign image data is unavailable', 404);
+  }
+
+  return { content: Buffer.from(image.content), mimeType: image.mimeType };
 }

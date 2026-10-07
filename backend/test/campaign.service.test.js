@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { Campaign } from '../src/models/campaign.model.js';
-import { createCampaign } from '../src/services/campaign.service.js';
+import {
+  createCampaign,
+  getCampaignImage,
+  listCampaigns,
+} from '../src/services/campaign.service.js';
 
 const hospital = { _id: 'hospital-id', fullName: 'Community Hospital' };
 
@@ -46,10 +50,94 @@ test('creates a campaign owned by the hospital and returns image metadata', asyn
     assert.equal(persistedDocument.title, 'Community blood drive');
     assert.equal(persistedDocument.images[0].content.length, 8);
     assert.equal(campaign.id, 'campaign-id');
-    assert.deepEqual(campaign.images, [{ name: 'drive.png', mimeType: 'image/png', size: 8 }]);
+    assert.equal(campaign.hospitalName, hospital.fullName);
+    assert.deepEqual(campaign.images, [
+      { name: 'drive.png', mimeType: 'image/png', size: 8, index: 0 },
+    ]);
     assert.equal('content' in campaign.images[0], false);
   } finally {
     Campaign.create = originalCreate;
+  }
+});
+
+test('lists database campaigns with preview metadata and hospital details', async () => {
+  const originalFind = Campaign.find;
+  let sortOptions;
+  Campaign.find = () => ({
+    sort(options) {
+      sortOptions = options;
+      return this;
+    },
+    async lean() {
+      return [
+        {
+          _id: 'campaign-id',
+          title: 'Community blood drive',
+          hospitalName: hospital.fullName,
+          date: new Date('2026-10-15T00:00:00.000Z'),
+          location: 'Central Hall',
+          description: 'Join our community donation event.',
+          images: [{ name: 'drive.png', mimeType: 'image/png', size: 8 }],
+          createdAt: new Date('2026-09-30T12:00:00.000Z'),
+        },
+      ];
+    },
+  });
+
+  try {
+    const campaigns = await listCampaigns();
+
+    assert.deepEqual(sortOptions, { date: 1, createdAt: -1 });
+    assert.equal(campaigns.length, 1);
+    assert.equal(campaigns[0].hospitalName, hospital.fullName);
+    assert.deepEqual(campaigns[0].images, [
+      { name: 'drive.png', mimeType: 'image/png', size: 8, index: 0 },
+    ]);
+    assert.equal('content' in campaigns[0].images[0], false);
+  } finally {
+    Campaign.find = originalFind;
+  }
+});
+
+test('returns the selected campaign image content and MIME type', async () => {
+  const originalFindById = Campaign.findById;
+  const imageContent = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  let selectedFields;
+  Campaign.findById = () => ({
+    select(fields) {
+      selectedFields = fields;
+      return Promise.resolve({
+        images: [{ content: imageContent, mimeType: 'image/png' }],
+      });
+    },
+  });
+
+  try {
+    const image = await getCampaignImage('507f1f77bcf86cd799439011', '0');
+
+    assert.equal(selectedFields, 'images.name images.mimeType images.size +images.content');
+    assert.deepEqual(image.content, imageContent);
+    assert.equal(image.mimeType, 'image/png');
+  } finally {
+    Campaign.findById = originalFindById;
+  }
+});
+
+test('rejects campaign images with missing binary data', async () => {
+  const originalFindById = Campaign.findById;
+  Campaign.findById = () => ({
+    select() {
+      return Promise.resolve({ images: [{ content: undefined, mimeType: 'image/png' }] });
+    },
+  });
+
+  try {
+    await assert.rejects(
+      getCampaignImage('507f1f77bcf86cd799439011', '0'),
+      { message: 'Campaign image data is unavailable' },
+    );
+  } finally {
+    Campaign.findById = originalFindById;
   }
 });
 

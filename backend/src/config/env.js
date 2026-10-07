@@ -28,9 +28,17 @@ const smtpPort = Number.parseInt(process.env.SMTP_PORT ?? '587', 10);
 const smtpSecure = (process.env.SMTP_SECURE ?? 'false').trim().toLowerCase() === 'true';
 const smtpUser = process.env.SMTP_USER?.trim();
 const smtpPass = process.env.SMTP_PASS?.trim();
+const whatsappAccessToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+const whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+const whatsappTemplateName = process.env.WHATSAPP_BLOOD_REQUEST_TEMPLATE?.trim();
+const whatsappTemplateLanguage =
+  process.env.WHATSAPP_TEMPLATE_LANGUAGE?.trim() || 'en';
+const whatsappGraphApiVersion =
+  process.env.WHATSAPP_GRAPH_API_VERSION?.trim() || 'v23.0';
 const openaiApiKey = process.env.OPENAI_API_KEY?.trim();
 const openaiRequestDraftModel = process.env.OPENAI_REQUEST_DRAFT_MODEL?.trim() || 'gpt-5.4-mini';
 const openaiChatModel = process.env.OPENAI_CHAT_MODEL?.trim() || 'gpt-5.4-mini';
+const adminDashboardToken = process.env.ADMIN_DASHBOARD_TOKEN?.trim();
 
 if (Number.isNaN(parsedPort)) {
   throw new Error('PORT must be a valid number');
@@ -61,6 +69,21 @@ if (hasSmtpConfig && (!smtpHost || !smtpUser || !smtpPass)) {
   throw new Error('Gmail SMTP email requires SMTP_HOST, SMTP_USER, and SMTP_PASS to be configured together.');
 }
 
+const hasWhatsappConfig = Boolean(
+  whatsappAccessToken || whatsappPhoneNumberId || whatsappTemplateName,
+);
+if (
+  hasWhatsappConfig &&
+  (!whatsappAccessToken || !whatsappPhoneNumberId || !whatsappTemplateName)
+) {
+  throw new Error(
+    'WhatsApp notifications require WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_BLOOD_REQUEST_TEMPLATE to be configured together.',
+  );
+}
+if (!/^v\d+\.\d+$/.test(whatsappGraphApiVersion)) {
+  throw new Error('WHATSAPP_GRAPH_API_VERSION must use the format vNN.N');
+}
+
 export const env = Object.freeze({
   clientOrigins: (process.env.CLIENT_ORIGINS ?? '')
     .split(',')
@@ -73,6 +96,7 @@ export const env = Object.freeze({
   matchingTimeZone: process.env.MATCHING_TIME_ZONE?.trim() || 'Africa/Douala',
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parsedPort,
+  adminDashboardToken,
   expoPushAccessToken: process.env.EXPO_PUSH_ACCESS_TOKEN?.trim(),
   smtp: Object.freeze({
     host: smtpHost,
@@ -80,6 +104,13 @@ export const env = Object.freeze({
     secure: smtpSecure,
     user: smtpUser,
     pass: smtpPass,
+  }),
+  whatsapp: Object.freeze({
+    accessToken: whatsappAccessToken,
+    phoneNumberId: whatsappPhoneNumberId,
+    templateName: whatsappTemplateName,
+    templateLanguage: whatsappTemplateLanguage,
+    graphApiVersion: whatsappGraphApiVersion,
   }),
   openai: Object.freeze({
     apiKey: openaiApiKey,

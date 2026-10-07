@@ -33,12 +33,19 @@ function serializeUser(user) {
     cityRegion: user.cityRegion,
     ...(user.bloodType ? { bloodType: user.bloodType } : {}),
     ...(user.role === 'hospital'
-      ? { hospitalVerificationStatus: user.hospitalVerificationStatus ?? 'unverified' }
+      ? {
+          hospitalVerificationStatus: user.hospitalVerificationStatus ?? 'unverified',
+          voluntaryDonation: {
+            enabled: user.voluntaryDonation?.enabled ?? false,
+            feeXaf: user.voluntaryDonation?.feeXaf ?? 0,
+          },
+        }
       : {}),
     ...(user.role === 'donor' ? { donationProfile: serializeDonationProfile(user) } : {}),
     notificationPreferences: {
       pushEnabled: user.notificationPreferences?.pushEnabled ?? true,
       emailEnabled: user.notificationPreferences?.emailEnabled ?? true,
+      whatsappEnabled: user.notificationPreferences?.whatsappEnabled ?? false,
     },
     ...(user.location
       ? {
@@ -160,24 +167,83 @@ export async function getCurrentUser(token) {
 export async function updateNotificationPreferences(userId, payload) {
   const pushEnabled = payload.pushEnabled;
   const emailEnabled = payload.emailEnabled;
+  const whatsappEnabled = payload.whatsappEnabled;
 
-  if (typeof pushEnabled !== 'boolean' || typeof emailEnabled !== 'boolean') {
+  if (
+    typeof pushEnabled !== 'boolean' ||
+    typeof emailEnabled !== 'boolean' ||
+    (whatsappEnabled !== undefined && typeof whatsappEnabled !== 'boolean')
+  ) {
     throw new AppError('Notification preferences must be true or false', 400);
+  }
+
+  const preferenceUpdates = {
+    'notificationPreferences.pushEnabled': pushEnabled,
+    'notificationPreferences.emailEnabled': emailEnabled,
+  };
+  if (whatsappEnabled !== undefined) {
+    preferenceUpdates['notificationPreferences.whatsappEnabled'] = whatsappEnabled;
+    if (whatsappEnabled) {
+      preferenceUpdates['notificationPreferences.whatsappOptedInAt'] = new Date();
+    }
   }
 
   const user = await User.findByIdAndUpdate(
     userId,
-    {
-      $set: {
-        'notificationPreferences.pushEnabled': pushEnabled,
-        'notificationPreferences.emailEnabled': emailEnabled,
-      },
-    },
+    { $set: preferenceUpdates },
     { new: true, runValidators: true },
   );
   if (!user) throw new AppError('User not found', 404);
 
   return serializeUser(user);
+}
+
+export async function updateHospitalVoluntaryDonation(userId, payload) {
+  const enabled = payload?.enabled;
+  const feeXaf = payload?.feeXaf;
+
+  if (typeof enabled !== 'boolean') {
+    throw new AppError('Voluntary donation must be enabled or disabled', 400);
+  }
+  if (!Number.isSafeInteger(feeXaf) || feeXaf < 0) {
+    throw new AppError('Enter a non-negative whole-number fee in XAF', 400);
+  }
+
+  const user = await User.findByIdAndUpdate(
+    { _id: userId, role: 'hospital' },
+    {
+      $set: {
+        'voluntaryDonation.enabled': enabled,
+        'voluntaryDonation.feeXaf': feeXaf,
+      },
+    },
+    { new: true, runValidators: true },
+  );
+  if (!user) throw new AppError('Hospital account not found', 404);
+
+  return serializeUser(user);
+}
+
+export async function listVoluntaryDonationCentres() {
+  const hospitals = await User.find({
+    role: 'hospital',
+    'voluntaryDonation.enabled': true,
+  })
+    .select('fullName email phone cityRegion location voluntaryDonation')
+    .sort({ fullName: 1 })
+    .lean();
+
+  return hospitals.map((hospital) => ({
+    id: String(hospital._id),
+    name: hospital.fullName,
+    email: hospital.email,
+    phone: hospital.phone,
+    cityRegion: hospital.cityRegion,
+    feeXaf: hospital.voluntaryDonation.feeXaf,
+    ...(hospital.location?.coordinates?.length === 2
+      ? { coordinates: [...hospital.location.coordinates] }
+      : {}),
+  }));
 }
 
 function serializeDonationProfile(user) {

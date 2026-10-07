@@ -3,6 +3,7 @@ import { DonorRequestActivity } from '../models/donor-request-activity.model.js'
 import { User } from '../models/user.model.js';
 import { sendBloodRequestEmail } from './email.service.js';
 import { createRequestNotifications } from './notification-inbox.service.js';
+import { sendBloodRequestWhatsApp } from './whatsapp.service.js';
 
 const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
 const MAX_EXPO_BATCH_SIZE = 100;
@@ -215,6 +216,58 @@ async function deliverEmailNotifications(activities, bloodRequest, hospital) {
   });
 }
 
+async function deliverWhatsAppNotifications(activities, bloodRequest, hospital) {
+  await runWithConcurrency(activities, 5, async (activity) => {
+    if (activity.whatsappStatus) return;
+
+    const claim = await DonorRequestActivity.updateOne(
+      { _id: activity._id, whatsappStatus: { $exists: false } },
+      { $set: { whatsappStatus: 'processing' } },
+    );
+    if (claim.modifiedCount !== 1) return;
+
+    const donor = activity.donorId;
+    if (!donor.notificationPreferences?.whatsappEnabled) {
+      await DonorRequestActivity.updateOne(
+        { _id: activity._id },
+        { $set: { whatsappStatus: 'skipped' }, $unset: { whatsappError: 1 } },
+      );
+      return;
+    }
+
+    try {
+      const { messageId } = await sendBloodRequestWhatsApp({
+        donor: { fullName: donor.fullName, phone: donor.phone },
+        hospital: { fullName: hospital.fullName },
+        bloodRequest,
+        matchRank: activity.matchRank,
+      });
+      await DonorRequestActivity.updateOne(
+        { _id: activity._id },
+        {
+          $set: {
+            whatsappStatus: 'sent',
+            whatsappMessageId: messageId,
+            whatsappSentAt: new Date(),
+          },
+          $unset: { whatsappError: 1 },
+        },
+      );
+    } catch (error) {
+      await DonorRequestActivity.updateOne(
+        { _id: activity._id },
+        {
+          $set: {
+            whatsappStatus: 'failed',
+            whatsappError: compactError(error),
+          },
+          $unset: { whatsappMessageId: 1, whatsappSentAt: 1 },
+        },
+      );
+    }
+  });
+}
+
 async function deliverPushNotifications(activities, content, bloodRequest) {
   const pushEntries = [];
   const updatesByActivity = new Map();
@@ -326,10 +379,14 @@ export async function dispatchMatchNotifications(bloodRequest, donorIds) {
   const activities = await DonorRequestActivity.find({
     requestId: bloodRequest._id,
     donorId: { $in: donorIds },
-    $or: [{ pushStatus: { $exists: false } }, { emailStatus: { $exists: false } }],
+    $or: [
+      { pushStatus: { $exists: false } },
+      { emailStatus: { $exists: false } },
+      { whatsappStatus: { $exists: false } },
+    ],
   }).populate({
     path: 'donorId',
-    select: 'fullName email notificationPreferences expoPushTokens',
+    select: 'fullName email phone notificationPreferences expoPushTokens',
   });
   const validActivities = activities.filter((activity) => activity.donorId);
   const content = buildNotificationContent(bloodRequest);
@@ -354,6 +411,11 @@ export async function dispatchMatchNotifications(bloodRequest, donorIds) {
     ),
     deliverEmailNotifications(
       validActivities.filter((activity) => !activity.emailStatus),
+      bloodRequest,
+      hospital,
+    ),
+    deliverWhatsAppNotifications(
+      validActivities.filter((activity) => !activity.whatsappStatus),
       bloodRequest,
       hospital,
     ),

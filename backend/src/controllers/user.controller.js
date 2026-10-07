@@ -62,6 +62,24 @@ export async function updateDonationProfile(request, response) {
   response.json({ data: { user } });
 }
 
+export async function updateHospitalVoluntaryDonation(request, response) {
+  const token = getBearerToken(request);
+  if (!token) throw new AppError('A ****** token is required', 401);
+
+  const hospital = await userService.authenticateUserToken(token, 'hospital');
+  const user = await userService.updateHospitalVoluntaryDonation(hospital._id, request.body);
+  response.json({ data: { user } });
+}
+
+export async function listVoluntaryDonationCentres(request, response) {
+  const token = getBearerToken(request);
+  if (!token) throw new AppError('A ****** token is required', 401);
+
+  await userService.authenticateUserToken(token, 'donor');
+  const centres = await userService.listVoluntaryDonationCentres();
+  response.json({ data: centres });
+}
+
 export async function registerExpoPushToken(request, response) {
   const token = getBearerToken(request);
   if (!token) throw new AppError('A Bearer authentication token is required', 401);

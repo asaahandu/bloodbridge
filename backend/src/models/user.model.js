@@ -53,6 +53,11 @@ const notificationPreferencesSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    whatsappEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    whatsappOptedInAt: Date,
   },
   { _id: false },
 );
@@ -90,6 +95,27 @@ const donationProfileSchema = new mongoose.Schema(
       type: Number,
       enum: [10, 25, 50],
       default: 25,
+    },
+  },
+  { _id: false },
+);
+
+const voluntaryDonationSchema = new mongoose.Schema(
+  {
+    enabled: {
+      type: Boolean,
+      default: false,
+    },
+    feeXaf: {
+      type: Number,
+      min: [0, 'Voluntary donation fee cannot be negative'],
+      validate: {
+        validator(value) {
+          return Number.isSafeInteger(value);
+        },
+        message: 'Voluntary donation fee must be a whole XAF amount',
+      },
+      default: 0,
     },
   },
   { _id: false },
@@ -205,9 +231,13 @@ const userSchema = new mongoose.Schema(
           : undefined;
       },
     },
+    voluntaryDonation: {
+      type: voluntaryDonationSchema,
+      default: undefined,
+    },
     notificationPreferences: {
       type: notificationPreferencesSchema,
-      default: () => ({ pushEnabled: true, emailEnabled: true }),
+      default: () => ({ pushEnabled: true, emailEnabled: true, whatsappEnabled: false }),
     },
     expoPushTokens: {
       type: [expoPushTokenSchema],

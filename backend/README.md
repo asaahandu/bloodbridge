@@ -45,8 +45,11 @@ From the project root, you can also run `npm run backend:dev`.
 | `GET` | `/api/v1/blood-requests/mine/:requestId/donor-responses/:donorId` | Get a responding donor's profile and AI screening summary |
 | `POST` | `/api/v1/ai/chat/eligibility/:requestId/start` | Start or resume an accepted donor request's eligibility screening |
 | `POST` | `/api/v1/ai/chat/eligibility/:requestId/messages` | Submit one answer to the eligibility screening |
+| `GET` | `/api/v1/admin/dashboard` | Return protected database aggregates for the admin console |
 
 Never expose `MONGODB_URI` to the Expo application. Only `EXPO_PUBLIC_API_URL` belongs in the app's environment file.
+
+The admin dashboard endpoint requires `Authorization: Bearer <ADMIN_DASHBOARD_TOKEN>`. Configure the same long, random token in `backend/.env` and `admin/.env.local`; it must remain server-only.
 
 ## AI request drafting
 

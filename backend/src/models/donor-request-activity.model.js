@@ -65,6 +65,16 @@ const donorRequestActivitySchema = new mongoose.Schema(
       type: String,
       maxlength: 500,
     },
+    whatsappStatus: {
+      type: String,
+      enum: ['processing', 'sent', 'skipped', 'failed'],
+    },
+    whatsappMessageId: String,
+    whatsappSentAt: Date,
+    whatsappError: {
+      type: String,
+      maxlength: 500,
+    },
     decision: {
       type: String,
       enum: ['accepted', 'declined'],
