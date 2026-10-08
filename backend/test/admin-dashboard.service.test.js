@@ -25,6 +25,7 @@ test('builds the admin dashboard from database aggregates', async () => {
   BloodRequest.countDocuments = async (query) => query.urgency === 'critical' ? 3 : 9;
   BloodRequest.find = () => ({
     select() { return this; },
+    populate() { return this; },
     sort() { return this; },
     limit() { return this; },
     async lean() {
@@ -32,6 +33,7 @@ test('builds the admin dashboard from database aggregates', async () => {
         {
           _id: 'standard-request',
           hospitalName: 'Community Hospital',
+          hospitalId: { hospitalVerificationStatus: 'verified' },
           city: 'Douala',
           bloodType: 'A+',
           unitsNeeded: 2,
@@ -91,6 +93,8 @@ test('builds the admin dashboard from database aggregates', async () => {
     assert.equal(dashboard.donorResponses.changePercent, 400);
     assert.equal(dashboard.donorResponses.series.length, 14);
     assert.equal(dashboard.activeRequests[0].id, 'critical-request');
+    assert.equal(dashboard.activeRequests[0].hospitalVerificationStatus, 'unverified');
+    assert.equal(dashboard.activeRequests[1].hospitalVerificationStatus, 'verified');
     assert.deepEqual(dashboard.activeRequests[0].donorProgress, {
       notified: 14,
       responded: 6,

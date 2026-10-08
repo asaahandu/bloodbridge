@@ -3,6 +3,7 @@ export type BloodRequest = {
   bloodType: string;
   distance: string;
   hospital: string;
+  hospitalVerificationStatus?: 'unverified' | 'pending' | 'rejected' | 'verified';
   location: string;
   neededBy?: string;
   urgency?: 'standard' | 'urgent' | 'critical';

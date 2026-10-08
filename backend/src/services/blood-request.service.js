@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 import { env } from '../config/env.js';
 import {
     COMPATIBLE_DONOR_BLOOD_TYPES,
@@ -16,6 +18,14 @@ import {
 
 function emptyDonorProgress() {
   return { notified: 0, responded: 0, confirmed: 0 };
+}
+
+function addHospitalVerificationStatus(request) {
+  const { hospitalId, ...requestData } = request;
+  return {
+    ...requestData,
+    hospitalVerificationStatus: hospitalId?.hospitalVerificationStatus ?? 'unverified',
+  };
 }
 
 async function addDonorProgress(bloodRequests) {
@@ -365,9 +375,33 @@ export async function listBloodRequests(donorId) {
   if (requestIds.length === 0) return [];
 
   return BloodRequest.find({ _id: { $in: requestIds }, status: 'active' })
+    .populate({ path: 'hospitalId', select: 'hospitalVerificationStatus' })
     .sort({ urgency: 1, neededBy: 1, createdAt: -1 })
     .limit(100)
-    .lean();
+    .lean()
+    .then((requests) => requests.map(addHospitalVerificationStatus));
+}
+
+export async function getDonorBloodRequest(requestId, donorId) {
+  if (!mongoose.isValidObjectId(requestId)) {
+    throw new AppError('Blood request not found', 404);
+  }
+
+  const [request, activity] = await Promise.all([
+    BloodRequest.findOne({ _id: requestId, status: 'active' })
+      .populate({ path: 'hospitalId', select: 'hospitalVerificationStatus' })
+      .lean(),
+    DonorRequestActivity.findOne({ requestId, donorId })
+      .select('decision')
+      .lean(),
+  ]);
+
+  if (!request || !activity) throw new AppError('Blood request not found', 404);
+
+  return {
+    request: addHospitalVerificationStatus(request),
+    decision: activity.decision,
+  };
 }
 
 export async function listDonorActivity(donorId) {
@@ -379,7 +413,8 @@ export async function listDonorActivity(donorId) {
       path: 'requestId',
       select:
         'hospitalName bloodType unitsNeeded internalReference ward urgency status city address ' +
-        'facilityLocation rewardAmount rewardCurrency neededBy createdAt updatedAt',
+        'facilityLocation rewardAmount rewardCurrency neededBy createdAt updatedAt hospitalId',
+      populate: { path: 'hospitalId', select: 'hospitalVerificationStatus' },
     })
     .sort({ respondedAt: -1 })
     .limit(100)
@@ -389,7 +424,7 @@ export async function listDonorActivity(donorId) {
     .filter((activity) => activity.requestId)
     .map((activity) => ({
       id: String(activity._id),
-      request: activity.requestId,
+      request: addHospitalVerificationStatus(activity.requestId),
       decision: activity.decision,
       respondedAt: activity.respondedAt,
       ...(activity.confirmedAt ? { confirmedAt: activity.confirmedAt } : {}),

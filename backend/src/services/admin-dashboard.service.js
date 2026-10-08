@@ -1,10 +1,315 @@
+import mongoose from 'mongoose';
+
 import { BloodRequest } from '../models/blood-request.model.js';
+import { Campaign } from '../models/campaign.model.js';
 import { DonorRequestActivity } from '../models/donor-request-activity.model.js';
+import { KycRequest } from '../models/kyc-request.model.js';
 import { User } from '../models/user.model.js';
+import { AppError } from '../utils/app-error.js';
 import { env } from '../config/env.js';
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const ADMIN_LIST_PAGE_SIZE = 25;
 const URGENCY_ORDER = { critical: 0, urgent: 1, standard: 2 };
+const ADMIN_USERS_PAGE_SIZE = 50;
+
+export async function getAdminUsers(page = 1) {
+  const [total, donors, hospitals] = await Promise.all([
+    User.countDocuments({}),
+    User.countDocuments({ role: 'donor' }),
+    User.countDocuments({ role: 'hospital' }),
+  ]);
+  const resolvedPage = Math.min(page, Math.max(1, Math.ceil(total / ADMIN_USERS_PAGE_SIZE)));
+  const users = await User.find({})
+    .select('fullName email phone role cityRegion bloodType hospitalVerificationStatus createdAt')
+    .sort({ createdAt: -1, _id: -1 })
+    .skip((resolvedPage - 1) * ADMIN_USERS_PAGE_SIZE)
+    .limit(ADMIN_USERS_PAGE_SIZE)
+    .lean();
+
+  return {
+    users: users.map((user) => ({
+      id: String(user._id),
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      cityRegion: user.cityRegion,
+      ...(user.bloodType ? { bloodType: user.bloodType } : {}),
+      ...(user.role === 'hospital'
+        ? { hospitalVerificationStatus: user.hospitalVerificationStatus ?? 'unverified' }
+        : {}),
+      createdAt: user.createdAt.toISOString(),
+    })),
+    total,
+    donors,
+    hospitals,
+    page: resolvedPage,
+    pageSize: ADMIN_USERS_PAGE_SIZE,
+  };
+}
+
+export async function getAdminBloodRequests(page = 1) {
+  const [total, active, fulfilled, cancelled, critical] = await Promise.all([
+    BloodRequest.countDocuments({}),
+    BloodRequest.countDocuments({ status: 'active' }),
+    BloodRequest.countDocuments({ status: 'fulfilled' }),
+    BloodRequest.countDocuments({ status: 'cancelled' }),
+    BloodRequest.countDocuments({ status: 'active', urgency: 'critical' }),
+  ]);
+  const resolvedPage = Math.min(page, Math.max(1, Math.ceil(total / ADMIN_LIST_PAGE_SIZE)));
+  const requests = await BloodRequest.find({})
+    .select('hospitalName hospitalId city bloodType unitsNeeded internalReference ward urgency status rewardAmount rewardCurrency createdAt neededBy')
+    .populate({ path: 'hospitalId', select: 'hospitalVerificationStatus' })
+    .sort({ createdAt: -1, _id: -1 })
+    .skip((resolvedPage - 1) * ADMIN_LIST_PAGE_SIZE)
+    .limit(ADMIN_LIST_PAGE_SIZE)
+    .lean();
+  const requestIds = requests.map((request) => request._id);
+  const progressRows = requestIds.length === 0
+    ? []
+    : await DonorRequestActivity.aggregate([
+        { $match: { requestId: { $in: requestIds } } },
+        {
+          $group: {
+            _id: '$requestId',
+            notified: { $sum: 1 },
+            responded: { $sum: { $cond: [{ $ne: ['$respondedAt', null] }, 1, 0] } },
+            confirmed: { $sum: { $cond: [{ $ne: ['$confirmedAt', null] }, 1, 0] } },
+          },
+        },
+      ]);
+  const progressByRequest = new Map(
+    progressRows.map((progress) => [String(progress._id), progress]),
+  );
+
+  return {
+    requests: requests.map((request) => {
+      const progress = progressByRequest.get(String(request._id));
+      return {
+        id: String(request._id),
+        hospitalName: request.hospitalName,
+        hospitalVerificationStatus:
+          request.hospitalId?.hospitalVerificationStatus ?? 'unverified',
+        city: request.city,
+        bloodType: request.bloodType,
+        unitsNeeded: request.unitsNeeded,
+        internalReference: request.internalReference,
+        ...(request.ward ? { ward: request.ward } : {}),
+        urgency: request.urgency,
+        status: request.status,
+        ...(request.rewardAmount == null
+          ? {}
+          : { rewardAmount: request.rewardAmount, rewardCurrency: request.rewardCurrency }),
+        createdAt: request.createdAt.toISOString(),
+        neededBy: request.neededBy.toISOString(),
+        donorProgress: {
+          notified: progress?.notified ?? 0,
+          responded: progress?.responded ?? 0,
+          confirmed: progress?.confirmed ?? 0,
+        },
+      };
+    }),
+    total,
+    active,
+    fulfilled,
+    cancelled,
+    critical,
+    page: resolvedPage,
+    pageSize: ADMIN_LIST_PAGE_SIZE,
+  };
+}
+
+export async function getAdminCampaigns(page = 1, now = new Date()) {
+  const [total, upcoming, past] = await Promise.all([
+    Campaign.countDocuments({}),
+    Campaign.countDocuments({ date: { $gte: now } }),
+    Campaign.countDocuments({ date: { $lt: now } }),
+  ]);
+  const resolvedPage = Math.min(page, Math.max(1, Math.ceil(total / ADMIN_LIST_PAGE_SIZE)));
+  const campaigns = await Campaign.find({})
+    .select('hospitalName hospitalId title date location description images.name images.mimeType images.size createdAt')
+    .populate({ path: 'hospitalId', select: 'hospitalVerificationStatus' })
+    .sort({ date: 1, createdAt: -1, _id: -1 })
+    .skip((resolvedPage - 1) * ADMIN_LIST_PAGE_SIZE)
+    .limit(ADMIN_LIST_PAGE_SIZE)
+    .lean();
+
+  return {
+    campaigns: campaigns.map((campaign) => ({
+      id: String(campaign._id),
+      hospitalName: campaign.hospitalName,
+      hospitalVerificationStatus:
+        campaign.hospitalId?.hospitalVerificationStatus ?? 'unverified',
+      title: campaign.title,
+      date: campaign.date.toISOString(),
+      upcoming: campaign.date >= now,
+      location: campaign.location,
+      description: campaign.description,
+      images: campaign.images.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
+      createdAt: campaign.createdAt.toISOString(),
+    })),
+    total,
+    upcoming,
+    past,
+    page: resolvedPage,
+    pageSize: ADMIN_LIST_PAGE_SIZE,
+  };
+}
+
+export async function getAdminKycRequests(page = 1) {
+  const [total, pending, verified, rejected] = await Promise.all([
+    KycRequest.countDocuments({}),
+    KycRequest.countDocuments({ status: 'pending' }),
+    KycRequest.countDocuments({ status: 'verified' }),
+    KycRequest.countDocuments({ status: 'rejected' }),
+  ]);
+  const resolvedPage = Math.min(page, Math.max(1, Math.ceil(total / ADMIN_LIST_PAGE_SIZE)));
+  const requests = await KycRequest.find({})
+    .select('hospitalName hospitalId status submittedAt documents.name documents.mimeType documents.size')
+    .populate({ path: 'hospitalId', select: 'fullName email phone cityRegion hospitalVerificationStatus' })
+    .sort({ submittedAt: -1, _id: -1 })
+    .skip((resolvedPage - 1) * ADMIN_LIST_PAGE_SIZE)
+    .limit(ADMIN_LIST_PAGE_SIZE)
+    .lean();
+
+  return {
+    requests: requests.map((request) => ({
+      id: String(request._id),
+      hospitalName: request.hospitalName,
+      hospitalVerificationStatus:
+        request.hospitalId?.hospitalVerificationStatus ?? 'unverified',
+      hospitalEmail: request.hospitalId?.email ?? '',
+      hospitalPhone: request.hospitalId?.phone ?? '',
+      cityRegion: request.hospitalId?.cityRegion ?? '',
+      status: request.status,
+      submittedAt: request.submittedAt.toISOString(),
+      documents: request.documents.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
+    })),
+    total,
+    pending,
+    verified,
+    rejected,
+    page: resolvedPage,
+    pageSize: ADMIN_LIST_PAGE_SIZE,
+  };
+}
+
+export async function getAdminKycRequest(requestId) {
+  if (!mongoose.isValidObjectId(requestId)) {
+    throw new AppError('KYC request not found', 404);
+  }
+
+  const request = await KycRequest.findById(requestId)
+    .select('hospitalName hospitalId status submittedAt documents.name documents.mimeType documents.size')
+    .populate({ path: 'hospitalId', select: 'fullName email phone cityRegion hospitalVerificationStatus' })
+    .lean();
+  if (!request) throw new AppError('KYC request not found', 404);
+
+  return {
+    id: String(request._id),
+    hospitalName: request.hospitalName,
+    hospitalVerificationStatus:
+      request.hospitalId?.hospitalVerificationStatus ?? 'unverified',
+    hospitalEmail: request.hospitalId?.email ?? '',
+    hospitalPhone: request.hospitalId?.phone ?? '',
+    cityRegion: request.hospitalId?.cityRegion ?? '',
+    status: request.status,
+    submittedAt: request.submittedAt.toISOString(),
+    documents: request.documents.map(({ name, mimeType, size }, index) => ({
+      index,
+      name,
+      mimeType,
+      size,
+    })),
+  };
+}
+
+export async function updateAdminKycRequestStatus(requestId, status) {
+  if (!mongoose.isValidObjectId(requestId)) {
+    throw new AppError('KYC request not found', 404);
+  }
+  if (!['verified', 'rejected'].includes(status)) {
+    throw new AppError('KYC status must be verified or rejected', 400);
+  }
+
+  const request = await KycRequest.findById(requestId).select('hospitalId status').lean();
+  if (!request) throw new AppError('KYC request not found', 404);
+  if (request.status !== 'pending') {
+    throw new AppError('This KYC request has already been reviewed', 409);
+  }
+
+  const hospital = await User.findOneAndUpdate(
+    {
+      _id: request.hospitalId,
+      role: 'hospital',
+      hospitalVerificationStatus: 'pending',
+    },
+    { $set: { hospitalVerificationStatus: status } },
+    { new: true },
+  ).select('_id');
+  if (!hospital) {
+    throw new AppError('The hospital verification status is no longer pending', 409);
+  }
+
+  let updatedRequest;
+  try {
+    updatedRequest = await KycRequest.findOneAndUpdate(
+      { _id: requestId, status: 'pending' },
+      { $set: { status } },
+      { new: true },
+    ).select('_id status');
+  } catch (error) {
+    const rollback = await User.updateOne(
+      { _id: request.hospitalId, role: 'hospital', hospitalVerificationStatus: status },
+      { $set: { hospitalVerificationStatus: 'pending' } },
+    );
+    if (rollback.modifiedCount !== 1) {
+      console.error('Unable to roll back hospital verification status after KYC review failure');
+      throw new AppError('KYC review failed and the hospital status could not be restored', 500);
+    }
+    throw error;
+  }
+
+  if (!updatedRequest) {
+    const rollback = await User.updateOne(
+      { _id: request.hospitalId, role: 'hospital', hospitalVerificationStatus: status },
+      { $set: { hospitalVerificationStatus: 'pending' } },
+    );
+    if (rollback.modifiedCount !== 1) {
+      console.error('Unable to roll back hospital verification status after a concurrent KYC review');
+      throw new AppError('KYC review conflicted and the hospital status could not be restored', 500);
+    }
+    throw new AppError('This KYC request has already been reviewed', 409);
+  }
+
+  return {
+    id: String(updatedRequest._id),
+    status: updatedRequest.status,
+    hospitalVerificationStatus: status,
+  };
+}
+
+export async function getAdminKycDocument(requestId, documentIndex) {
+  if (!mongoose.isValidObjectId(requestId) || !/^\d+$/.test(documentIndex)) {
+    throw new AppError('KYC document not found', 404);
+  }
+  const index = Number(documentIndex);
+  if (!Number.isSafeInteger(index)) throw new AppError('KYC document not found', 404);
+
+  const request = await KycRequest.findById(requestId)
+    .select('documents.name documents.mimeType documents.size +documents.content');
+  const document = request?.documents[index];
+  if (!document) throw new AppError('KYC document not found', 404);
+  if (!Buffer.isBuffer(document.content) || document.content.length === 0) {
+    throw new AppError('KYC document data is unavailable', 404);
+  }
+
+  return {
+    content: Buffer.from(document.content),
+    mimeType: document.mimeType,
+  };
+}
 
 function formatDateKey(date) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -138,7 +443,8 @@ export async function getAdminDashboard(now = new Date()) {
     BloodRequest.countDocuments({ status: 'active' }),
     BloodRequest.countDocuments({ status: 'active', urgency: 'critical' }),
     BloodRequest.find({ status: 'active' })
-      .select('hospitalName city bloodType unitsNeeded urgency createdAt neededBy')
+      .select('hospitalName hospitalId city bloodType unitsNeeded urgency createdAt neededBy')
+      .populate({ path: 'hospitalId', select: 'hospitalVerificationStatus' })
       .sort({ createdAt: -1 })
       .limit(25)
       .lean(),
@@ -214,6 +520,8 @@ export async function getAdminDashboard(now = new Date()) {
       return {
         id: String(request._id),
         hospitalName: request.hospitalName,
+        hospitalVerificationStatus:
+          request.hospitalId?.hospitalVerificationStatus ?? 'unverified',
         city: request.city,
         bloodType: request.bloodType,
         unitsNeeded: request.unitsNeeded,

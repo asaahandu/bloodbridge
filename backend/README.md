@@ -37,6 +37,10 @@ From the project root, you can also run `npm run backend:dev`.
 | `POST` | `/api/v1/users/donor-match-preview` | Estimate compatible donors near a facility |
 | `PATCH` | `/api/v1/users/:userId/location` | Save the user's latest authorized location |
 | `GET` | `/api/v1/blood-requests` | List active hospital requests |
+| `GET` | `/api/v1/campaigns/mine` | List campaigns created by the authenticated hospital |
+| `PATCH` | `/api/v1/campaigns/:campaignId` | Update a hospital-owned campaign and its images |
+| `DELETE` | `/api/v1/campaigns/:campaignId` | Delete a hospital-owned campaign |
+| `GET` | `/api/v1/blood-requests/:requestId` | Get request details for a donor notified about the active request |
 | `POST` | `/api/v1/blood-requests` | Create a hospital request using a hospital Bearer token |
 | `POST` | `/api/v1/campaigns` | Create a hospital campaign with optional JPEG/PNG images using a hospital Bearer token |
 | `POST` | `/api/v1/blood-requests/draft` | Turn a plain-language description into a reviewable request draft |
@@ -46,10 +50,24 @@ From the project root, you can also run `npm run backend:dev`.
 | `POST` | `/api/v1/ai/chat/eligibility/:requestId/start` | Start or resume an accepted donor request's eligibility screening |
 | `POST` | `/api/v1/ai/chat/eligibility/:requestId/messages` | Submit one answer to the eligibility screening |
 | `GET` | `/api/v1/admin/dashboard` | Return protected database aggregates for the admin console |
+| `GET` | `/api/v1/support/conversation` | Get the authenticated user's customer support conversation and message history |
+| `GET` | `/api/v1/admin/support/conversations` | List support conversations for the protected admin inbox |
+| `GET` | `/api/v1/admin/support/conversations/:conversationId/messages` | Load a support conversation's messages |
+| `POST` | `/api/v1/admin/support/conversations/:conversationId/messages` | Save and send a support reply |
 
 Never expose `MONGODB_URI` to the Expo application. Only `EXPO_PUBLIC_API_URL` belongs in the app's environment file.
 
 The admin dashboard endpoint requires `Authorization: Bearer <ADMIN_DASHBOARD_TOKEN>`. Configure the same long, random token in `backend/.env` and `admin/.env.local`; it must remain server-only.
+
+## Customer support chat
+
+Donors and hospitals can open the floating support button to join their private Socket.IO support
+conversation. The authenticated socket accepts `join-support-conversation` with the conversation ID
+and `send-support-message` with `{ "body": "..." }`; messages are broadcast as `support-message`.
+Each account has one persistent support thread, stored in the `SupportConversation` and
+`SupportMessage` MongoDB collections. The admin inbox is available from **Reports** in the admin
+console; staff replies are saved through the protected admin endpoints and delivered to the user's
+conversation room.
 
 ## AI request drafting
 

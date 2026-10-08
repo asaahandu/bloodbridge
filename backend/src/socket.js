@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 
 import { env } from './config/env.js';
 import * as messageService from './services/message.service.js';
+import * as supportService from './services/support.service.js';
 import { authenticateUserToken } from './services/user.service.js';
 
 function roomForRequest(requestId) {
@@ -10,6 +11,10 @@ function roomForRequest(requestId) {
 
 function roomForUser(userId) {
   return `user:${userId}`;
+}
+
+function roomForSupportConversation(conversationId) {
+  return `support-conversation:${conversationId}`;
 }
 
 function getToken(socket) {
@@ -57,6 +62,38 @@ export function attachSocketServer(httpServer) {
           io.to(roomForUser(participants.hospitalId)).emit('conversation-preview', preview);
         }
         callback?.({ ok: true, message });
+      } catch (error) {
+        callback?.({ ok: false, error: error.message });
+      }
+    });
+
+    socket.on('join-support-conversation', async (payload, callback) => {
+      try {
+        const conversationId = payload?.conversationId;
+        if (typeof conversationId !== 'string') {
+          callback?.({ ok: false, error: 'A support conversation is required' });
+          return;
+        }
+        const conversation = await supportService.getUserSupportConversation(socket.user);
+        if (conversation.conversationId !== conversationId) {
+          callback?.({ ok: false, error: 'You cannot access this support conversation' });
+          return;
+        }
+        await socket.join(roomForSupportConversation(conversationId));
+        callback?.({ ok: true, conversationId });
+      } catch (error) {
+        callback?.({ ok: false, error: error.message });
+      }
+    });
+
+    socket.on('send-support-message', async (payload, callback) => {
+      try {
+        const result = await supportService.createUserSupportMessage(socket.user, payload?.body);
+        io.to(roomForSupportConversation(result.conversationId)).emit(
+          'support-message',
+          result.message,
+        );
+        callback?.({ ok: true, message: result.message });
       } catch (error) {
         callback?.({ ok: false, error: error.message });
       }

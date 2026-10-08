@@ -6,6 +6,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { type CampaignRecord, getCampaign, getCampaignImageSource } from '@/lib/api';
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 
 export default function CampaignDetailsScreen() {
@@ -112,6 +113,7 @@ export default function CampaignDetailsScreen() {
               <Text className="text-xs font-semibold text-muted">
                 Organized by {campaign.hospitalName}
               </Text>
+              <HospitalVerificationBadge status={campaign.hospitalVerificationStatus} />
             </View>
 
             {campaign.images.length > 0 ? (
@@ -176,6 +178,23 @@ export default function CampaignDetailsScreen() {
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',
+                      timeZone: 'UTC',
+                    })}
+                  </Text>
+                </View>
+              </View>
+              <View className="flex-row items-center gap-3 rounded-[19px] border border-line bg-card p-4">
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-blood-red-soft">
+                  <Ionicons color="#8E1722" name="time-outline" size={20} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[10px] font-semibold text-muted">Posted on</Text>
+                  <Text className="mt-1 text-xs font-bold text-ink">
+                    {new Date(campaign.createdAt).toLocaleDateString(undefined, {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                      timeZone: 'UTC',
                     })}
                   </Text>
                 </View>
@@ -194,6 +213,59 @@ export default function CampaignDetailsScreen() {
             <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">About this campaign</Text>
             <View className="rounded-[21px] border border-line bg-card p-4">
               <Text className="text-xs leading-[19px] text-ink">{campaign.description}</Text>
+            </View>
+
+            <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Posted by</Text>
+            <View className="gap-3 rounded-[21px] border border-line bg-card p-4">
+              <View className="flex-row items-start gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-blood-red-soft">
+                  <Ionicons color="#8E1722" name="business-outline" size={20} />
+                </View>
+                <View className="min-w-0 flex-1">
+                  <Text className="text-[10px] font-semibold text-muted">Hospital</Text>
+                  <Text className="mt-1 text-sm font-bold text-ink">
+                    {campaign.hospital.name}
+                  </Text>
+                  <View className="mt-1 self-start">
+                    <HospitalVerificationBadge
+                      status={campaign.hospital.verificationStatus}
+                    />
+                  </View>
+                </View>
+              </View>
+              {campaign.hospital.cityRegion ? (
+                <View className="flex-row items-start gap-3 border-t border-line pt-3">
+                  <Ionicons color="#8E1722" name="location-outline" size={17} />
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-semibold text-muted">Hospital location</Text>
+                    <Text className="mt-1 text-xs font-semibold text-ink">
+                      {campaign.hospital.cityRegion}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {campaign.hospital.phone ? (
+                <View className="flex-row items-start gap-3 border-t border-line pt-3">
+                  <Ionicons color="#8E1722" name="call-outline" size={17} />
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-semibold text-muted">Phone</Text>
+                    <Text className="mt-1 text-xs font-semibold text-ink">
+                      {campaign.hospital.phone}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {campaign.hospital.email ? (
+                <View className="flex-row items-start gap-3 border-t border-line pt-3">
+                  <Ionicons color="#8E1722" name="mail-outline" size={17} />
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-semibold text-muted">Email</Text>
+                    <Text className="mt-1 text-xs font-semibold text-ink">
+                      {campaign.hospital.email}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
             </View>
           </>
         ) : null}

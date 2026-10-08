@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { KycRequestModal } from '@/components/hospital-kyc/KycRequestModal';
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
 import { submitHospitalKycRequest, updateHospitalVoluntaryDonation } from '@/lib/api';
 import { saveAuthenticatedUser, signOutAuthenticatedUser } from '@/lib/auth-session';
 import { useHospitalAccount } from '@/lib/hospital-data-hooks';
@@ -160,12 +161,12 @@ export default function HospitalProfileScreen() {
               <Ionicons color="#FFFFFF" name="business" size={27} />
             </View>
             <View className="flex-1">
-              <Text className="text-[17px] font-bold text-white">{user?.fullName ?? 'Hospital account'}</Text>
+              <View className="flex-row flex-wrap items-center gap-1.5">
+                <Text className="text-[17px] font-bold text-white">{user?.fullName ?? 'Hospital account'}</Text>
+                <HospitalVerificationBadge inverse status={verificationStatus} />
+              </View>
               <Text className="mt-1 text-[11px] text-[#AFAFAC]">BloodBridge hospital facility</Text>
             </View>
-            {verificationStatus === 'verified' ? (
-              <Ionicons color="#73C59F" name="checkmark-circle" size={22} />
-            ) : null}
           </View>
         </View>
 

@@ -12,6 +12,7 @@ import {
     type AppMessage,
     type MessageConversation,
 } from '@/lib/api';
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 
 type MessagesScreenProps = {
@@ -192,9 +193,16 @@ export function MessagesScreen({
               </View>
               <View className="min-w-0 flex-1">
                 <View className="flex-row items-center justify-between gap-2">
-                  <Text className="flex-1 text-[13px] font-extrabold text-ink" numberOfLines={1}>
-                    {audience === 'donor' ? conversation.hospitalName : conversation.donorName}
-                  </Text>
+                  <View className="flex-1 flex-row flex-wrap items-center gap-1.5">
+                    <Text className="shrink text-[13px] font-extrabold text-ink" numberOfLines={1}>
+                      {audience === 'donor' ? conversation.hospitalName : conversation.donorName}
+                    </Text>
+                    {audience === 'donor' ? (
+                      <HospitalVerificationBadge
+                        status={conversation.hospitalVerificationStatus}
+                      />
+                    ) : null}
+                  </View>
                   <Text className="text-[9px] font-semibold text-muted">
                     {formatPreviewTime(conversation.lastMessageAt)}
                   </Text>
@@ -228,7 +236,14 @@ export function MessagesScreen({
           <Ionicons color="#8E1722" name="person-outline" size={19} />
         </View>
         <View className="ml-3 min-w-0 flex-1">
-          <Text className="text-[15px] font-extrabold text-ink" numberOfLines={1}>{roomPersonName}</Text>
+          <View className="flex-row flex-wrap items-center gap-1.5">
+            <Text className="shrink text-[15px] font-extrabold text-ink" numberOfLines={1}>{roomPersonName}</Text>
+            {audience === 'donor' && selectedConversation ? (
+              <HospitalVerificationBadge
+                status={selectedConversation.hospitalVerificationStatus}
+              />
+            ) : null}
+          </View>
           <Text className="mt-0.5 text-[10px] font-semibold text-muted" numberOfLines={1}>
             {roomReference ? `Blood request · ${roomReference}` : 'Blood request conversation'}
           </Text>

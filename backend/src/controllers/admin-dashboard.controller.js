@@ -33,3 +33,63 @@ export async function getAdminDashboard(_request, response) {
   const dashboard = await adminDashboardService.getAdminDashboard();
   response.json({ data: dashboard });
 }
+
+export async function getAdminUsers(request, response) {
+  const page = getPage(request);
+  const users = await adminDashboardService.getAdminUsers(page);
+  response.json({ data: users });
+}
+
+function getPage(request) {
+  const pageValue = request.query.page ?? '1';
+  const page = Number(pageValue);
+  if (typeof pageValue !== 'string' || !/^[1-9]\d*$/.test(pageValue) || !Number.isSafeInteger(page)) {
+    throw new AppError('Page must be a positive integer', 400);
+  }
+  return page;
+}
+
+export async function getAdminBloodRequests(request, response) {
+  const requests = await adminDashboardService.getAdminBloodRequests(getPage(request));
+  response.json({ data: requests });
+}
+
+export async function getAdminCampaigns(request, response) {
+  const campaigns = await adminDashboardService.getAdminCampaigns(getPage(request));
+  response.json({ data: campaigns });
+}
+
+export async function getAdminKycRequests(request, response) {
+  const requests = await adminDashboardService.getAdminKycRequests(getPage(request));
+  response.json({ data: requests });
+}
+
+export async function getAdminKycRequest(request, response) {
+  const kycRequest = await adminDashboardService.getAdminKycRequest(request.params.requestId);
+  response.json({ data: kycRequest });
+}
+
+export async function updateAdminKycRequestStatus(request, response) {
+  const { status } = request.body ?? {};
+  if (status !== 'verified' && status !== 'rejected') {
+    throw new AppError('Status must be verified or rejected', 400);
+  }
+  const kycRequest = await adminDashboardService.updateAdminKycRequestStatus(
+    request.params.requestId,
+    status,
+  );
+  response.json({ data: kycRequest });
+}
+
+export async function getAdminKycDocument(request, response) {
+  const document = await adminDashboardService.getAdminKycDocument(
+    request.params.requestId,
+    request.params.documentIndex,
+  );
+  response
+    .set('Content-Type', document.mimeType)
+    .set('Content-Disposition', 'inline')
+    .set('Cache-Control', 'no-store')
+    .set('X-Content-Type-Options', 'nosniff')
+    .send(document.content);
+}

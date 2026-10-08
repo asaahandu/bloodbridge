@@ -5,7 +5,7 @@ import { AppError } from '../utils/app-error.js';
 const allowedMimeTypes = new Set(['image/jpeg', 'image/png']);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 5, fields: 4, parts: 9 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 5, fields: 5, parts: 10 },
   fileFilter(_request, file, callback) {
     if (!allowedMimeTypes.has(file.mimetype)) {
       callback(new AppError('Choose JPEG or PNG campaign images only', 400));

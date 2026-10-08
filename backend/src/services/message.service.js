@@ -55,6 +55,8 @@ function serializeConversation(conversation) {
     hospitalName: conversation.requestId.hospitalName,
     internalReference: conversation.requestId.internalReference,
     bloodType: conversation.requestId.bloodType,
+    hospitalVerificationStatus:
+      conversation.requestId.hospitalId?.hospitalVerificationStatus ?? 'unverified',
     donorId: String(conversation.donorId._id ?? conversation.donorId),
     donorName: conversation.donorId.fullName,
     donorBloodType: conversation.donorId.bloodType,
@@ -65,7 +67,11 @@ function serializeConversation(conversation) {
 
 export async function getConversationPreview(conversationId) {
   const conversation = await Conversation.findById(conversationId)
-    .populate({ path: 'requestId', select: 'hospitalName internalReference bloodType' })
+    .populate({
+      path: 'requestId',
+      select: 'hospitalName internalReference bloodType hospitalId',
+      populate: { path: 'hospitalId', select: 'hospitalVerificationStatus' },
+    })
     .populate({ path: 'donorId', select: 'fullName bloodType' })
     .lean();
   if (!conversation?.requestId || !conversation.donorId) return null;
@@ -80,7 +86,11 @@ export async function listConversations(user) {
   const conversations = await Conversation.find(
     user.role === 'hospital' ? { hospitalId: user._id } : { donorId: user._id },
   )
-    .populate({ path: 'requestId', select: 'hospitalName internalReference bloodType' })
+    .populate({
+      path: 'requestId',
+      select: 'hospitalName internalReference bloodType hospitalId',
+      populate: { path: 'hospitalId', select: 'hospitalVerificationStatus' },
+    })
     .populate({ path: 'donorId', select: 'fullName bloodType' })
     .sort({ lastMessageAt: -1, createdAt: -1 })
     .limit(100)

@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Alert, Platform, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,7 +19,6 @@ export default function DonorDashboardScreen() {
   const { responses, respondToRequest } = useDonorResponses();
   const [available, setAvailable] = useState(true);
   const [respondingRequestId, setRespondingRequestId] = useState<string>();
-  const [pendingScreeningRequestId, setPendingScreeningRequestId] = useState<string>();
   const responseByRequest = useMemo(
     () =>
       Object.fromEntries(
@@ -41,24 +40,6 @@ export default function DonorDashboardScreen() {
   const bloodTypeLabel =
     user?.bloodType && user.bloodType !== 'unknown' ? user.bloodType : 'Not known';
 
-  const openEligibilityScreening = (requestId: string) => {
-    router.navigate({
-      pathname: '/ai-chat',
-      params: {
-        audience: 'donor',
-        mode: 'eligibility',
-        requestId,
-      },
-    });
-  };
-
-  useEffect(() => {
-    if (!pendingScreeningRequestId) return;
-
-    openEligibilityScreening(pendingScreeningRequestId);
-    setPendingScreeningRequestId(undefined);
-  }, [pendingScreeningRequestId]);
-
   const handleResponse = async (
     request: Parameters<typeof respondToRequest>[0],
     decision: Parameters<typeof respondToRequest>[1],
@@ -68,11 +49,6 @@ export default function DonorDashboardScreen() {
     setRespondingRequestId(request.id);
     try {
       await respondToRequest(request, decision);
-      if (decision === 'accepted') {
-        // Navigate after React commits the accepted response. This avoids a root-stack
-        // transition being dropped while the nested donor tab state is updating.
-        setPendingScreeningRequestId(request.id);
-      }
     } catch (responseError) {
       Alert.alert(
         'Response not saved',
@@ -119,9 +95,10 @@ export default function DonorDashboardScreen() {
           onAccept={(request) => void handleResponse(request, 'accepted')}
           onDecline={(request) => void handleResponse(request, 'declined')}
           onRequestPress={(request) => {
-            if (responseByRequest[request.id] === 'accepted') {
-              openEligibilityScreening(request.id);
-            }
+            router.push({
+              pathname: '/donors/requests/[requestId]',
+              params: { requestId: request.id },
+            });
           }}
           onRetry={refresh}
           requests={requests}

@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DonationCentreMap } from '@/components/donor-home/DonationCentreMap';
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
 import { type AuthenticatedUser, type VoluntaryDonationCentre, getCurrentUser, listVoluntaryDonationCentres } from '@/lib/api';
 import { getAuthenticatedUser, saveAuthenticatedUser } from '@/lib/auth-session';
 
@@ -98,16 +99,22 @@ export default function DonationCentreDetailsScreen() {
             <Text className="text-[11px] font-extrabold tracking-[1.4px] text-blood-red">
               DONATION CENTRE
             </Text>
-            <Text className="mt-1 text-[27px] font-bold tracking-[-0.6px] text-ink">
-              {centre.name}
-            </Text>
+            <View className="mt-1 flex-row flex-wrap items-center gap-2">
+              <Text className="text-[27px] font-bold tracking-[-0.6px] text-ink">
+                {centre.name}
+              </Text>
+              <HospitalVerificationBadge status={centre.hospitalVerificationStatus} />
+            </View>
             <View className="mt-5 rounded-[23px] bg-ink p-5">
               <View className="flex-row items-center gap-4">
                 <View className="h-14 w-14 items-center justify-center rounded-[17px] bg-blood-red">
                   <Ionicons color="#FFFFFF" name="business" size={27} />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[17px] font-bold text-white">{centre.name}</Text>
+                  <View className="flex-row flex-wrap items-center gap-1.5">
+                    <Text className="text-[17px] font-bold text-white">{centre.name}</Text>
+                    <HospitalVerificationBadge status={centre.hospitalVerificationStatus} />
+                  </View>
                   <Text className="mt-1 text-[11px] text-[#AFAFAC]">{centre.cityRegion}</Text>
                 </View>
               </View>

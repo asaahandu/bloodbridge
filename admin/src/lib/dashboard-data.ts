@@ -36,6 +36,7 @@ export type DashboardData = {
   activeRequests: Array<{
     id: string;
     hospitalName: string;
+    hospitalVerificationStatus: "unverified" | "pending" | "rejected" | "verified";
     city: string;
     bloodType: string;
     unitsNeeded: number;
@@ -62,6 +63,11 @@ function isDashboardData(value: unknown): value is DashboardData {
       data.donorResponses &&
       Array.isArray(data.donorResponses.series) &&
       Array.isArray(data.activeRequests) &&
+      data.activeRequests.every((request) =>
+        ["unverified", "pending", "rejected", "verified"].includes(
+          String(request.hospitalVerificationStatus),
+        ),
+      ) &&
       Array.isArray(data.alerts) &&
       typeof data.generatedAt === "string",
   );

@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 import type { DocumentPickerAsset } from 'expo-document-picker';
+import { File } from 'expo-file-system';
+import type { ImagePickerAsset } from 'expo-image-picker';
 
 export type RegisterUserPayload = {
   fullName: string;
@@ -40,6 +42,8 @@ export type HospitalVoluntaryDonation = {
   feeXaf: number;
 };
 
+export type HospitalVerificationStatus = 'unverified' | 'pending' | 'rejected' | 'verified';
+
 export type VoluntaryDonationCentre = {
   id: string;
   name: string;
@@ -47,6 +51,7 @@ export type VoluntaryDonationCentre = {
   phone: string;
   cityRegion: string;
   feeXaf: number;
+  hospitalVerificationStatus?: HospitalVerificationStatus;
   coordinates?: [number, number];
 };
 
@@ -58,7 +63,7 @@ export type AuthenticatedUser = {
   phone: string;
   role: 'donor' | 'hospital';
   cityRegion: string;
-  hospitalVerificationStatus?: 'unverified' | 'pending' | 'rejected' | 'verified';
+  hospitalVerificationStatus?: HospitalVerificationStatus;
   bloodType?: string;
   donationProfile?: DonorDonationProfile;
   notificationPreferences?: {
@@ -78,6 +83,7 @@ export type MessageConversation = {
   id: string;
   requestId: string;
   hospitalName: string;
+  hospitalVerificationStatus?: HospitalVerificationStatus;
   internalReference: string;
   bloodType: string;
   donorId: string;
@@ -96,6 +102,20 @@ export type AppMessage = {
   senderRole: 'donor' | 'hospital';
   body: string;
   createdAt: string;
+};
+
+export type SupportMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string | null;
+  senderRole: 'user' | 'support';
+  body: string;
+  createdAt: string;
+};
+
+export type UserSupportConversation = {
+  conversationId: string;
+  messages: SupportMessage[];
 };
 
 type RegisterUserResponse = {
@@ -156,6 +176,7 @@ type CreateBloodRequestResponse = {
 export type StoredBloodRequest = {
   _id: string;
   hospitalName: string;
+  hospitalVerificationStatus?: HospitalVerificationStatus;
   bloodType: string;
   unitsNeeded: number;
   internalReference: string;
@@ -163,6 +184,7 @@ export type StoredBloodRequest = {
   urgency: 'standard' | 'urgent' | 'critical';
   status: 'active' | 'fulfilled' | 'cancelled';
   city: string;
+  address?: string;
   facilityLocation: {
     type: 'Point';
     coordinates: [number, number];
@@ -203,6 +225,15 @@ type DonorActivityListResponse = {
 
 type BloodRequestDetailResponse = {
   data: StoredBloodRequest;
+};
+
+export type DonorBloodRequestDetail = {
+  request: StoredBloodRequest;
+  decision: 'accepted' | 'declined' | 'pending';
+};
+
+type DonorBloodRequestDetailResponse = {
+  data: DonorBloodRequestDetail;
 };
 
 type CurrentUserResponse = {
@@ -518,18 +549,8 @@ export async function submitHospitalKycRequest(
   const formData = new FormData();
   formData.append('hospitalName', hospitalName);
   documents.forEach((document) => {
-    if (document.file) {
-      formData.append('documents', document.file, document.name);
-    } else {
-      formData.append(
-        'documents',
-        {
-          uri: document.uri,
-          name: document.name,
-          type: document.mimeType ?? 'application/octet-stream',
-        } as unknown as Blob,
-      );
-    }
+    const file = document.file ?? new File(document.uri);
+    formData.append('documents', file, document.name);
   });
 
   const response = await apiRequest<{
@@ -643,6 +664,18 @@ export async function listActiveBloodRequests(authToken: string) {
   return response.data;
 }
 
+export async function getDonorBloodRequest(authToken: string, requestId: string) {
+  const response = await apiRequest<DonorBloodRequestDetailResponse>(
+    `/blood-requests/${encodeURIComponent(requestId)}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${authToken}` },
+    },
+  );
+
+  return response.data;
+}
+
 export async function listMessageConversations(authToken: string) {
   const response = await apiRequest<{ data: MessageConversation[] }>('/messages/conversations', {
     method: 'GET',
@@ -660,6 +693,15 @@ export async function listMessages(authToken: string, requestId: string, donorId
       headers: { Authorization: `Bearer ${authToken}` },
     },
   );
+
+  return response.data;
+}
+
+export async function getUserSupportConversation(authToken: string) {
+  const response = await apiRequest<{ data: UserSupportConversation }>('/support/conversation', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
 
   return response.data;
 }
@@ -894,7 +936,7 @@ export async function saveUserLocation(
 export type CreateCampaignPayload = {
   date: string;
   description: string;
-  images: DocumentPickerAsset[];
+  images: ImagePickerAsset[];
   location: string;
   title: string;
 };
@@ -903,9 +945,10 @@ export type CreatedCampaign = {
   id: string;
   title: string;
   date: string;
+  hospital: CampaignRecord['hospital'];
   location: string;
   description: string;
-  images: { name: string; mimeType: string; size: number }[];
+  images: Omit<CampaignImage, 'index'>[];
   createdAt: string;
 };
 
@@ -920,6 +963,14 @@ export type CampaignRecord = {
   id: string;
   title: string;
   hospitalName: string;
+  hospital: {
+    name: string;
+    email: string | null;
+    phone: string | null;
+    cityRegion: string | null;
+    verificationStatus: HospitalVerificationStatus;
+  };
+  hospitalVerificationStatus?: HospitalVerificationStatus;
   date: string;
   location: string;
   description: string;
@@ -929,6 +980,15 @@ export type CampaignRecord = {
 
 export async function listCampaigns(authToken: string) {
   const response = await apiRequest<{ data: CampaignRecord[] }>('/campaigns', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+
+  return response.data;
+}
+
+export async function listHospitalCampaigns(authToken: string) {
+  const response = await apiRequest<{ data: CampaignRecord[] }>('/campaigns/mine', {
     method: 'GET',
     headers: { Authorization: `Bearer ${authToken}` },
   });
@@ -978,19 +1038,13 @@ export async function createHospitalCampaign(authToken: string, payload: CreateC
   formData.append('location', payload.location);
   formData.append('description', payload.description);
 
-  payload.images.forEach((image) => {
-    if (image.file) {
-      formData.append('images', image.file, image.name);
-    } else {
-      formData.append(
-        'images',
-        {
-          uri: image.uri,
-          name: image.name,
-          type: image.mimeType ?? 'application/octet-stream',
-        } as unknown as Blob,
-      );
-    }
+  payload.images.forEach((image, index) => {
+    const mimeType = image.mimeType ?? 'image/jpeg';
+    const name =
+      image.fileName ??
+      `campaign-image-${index + 1}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+    const file = image.file ?? new File(image.uri);
+    formData.append('images', file, name);
   });
 
   const response = await apiRequest<{ data: CreatedCampaign }>(
@@ -1004,4 +1058,46 @@ export async function createHospitalCampaign(authToken: string, payload: CreateC
   );
 
   return response.data;
+}
+
+export async function updateHospitalCampaign(
+  authToken: string,
+  campaignId: string,
+  payload: CreateCampaignPayload,
+  keepImageIndices: number[],
+) {
+  const formData = new FormData();
+  formData.append('title', payload.title);
+  formData.append('date', payload.date);
+  formData.append('location', payload.location);
+  formData.append('description', payload.description);
+  formData.append('keepImageIndices', JSON.stringify(keepImageIndices));
+
+  payload.images.forEach((image, index) => {
+    const mimeType = image.mimeType ?? 'image/jpeg';
+    const name =
+      image.fileName ??
+      `campaign-image-${index + 1}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+    const file = image.file ?? new File(image.uri);
+    formData.append('images', file, name);
+  });
+
+  const response = await apiRequest<{ data: CampaignRecord }>(
+    `/campaigns/${encodeURIComponent(campaignId)}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: formData,
+    },
+    60_000,
+  );
+
+  return response.data;
+}
+
+export async function deleteHospitalCampaign(authToken: string, campaignId: string) {
+  await apiRequest<void>(`/campaigns/${encodeURIComponent(campaignId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
 }

@@ -4,6 +4,7 @@ import {
   confirmDonorResponse,
   createBloodRequest,
   draftBloodRequest,
+  getDonorBloodRequest,
   getHospitalBloodRequest,
   getHospitalDonorResponseDetail,
   getHospitalRequestDonorMatches,
@@ -42,6 +43,8 @@ bloodRequestRouter.patch(
   '/mine/:requestId/donor-responses/:donorId/outcome',
   asyncHandler(recordDonorOutcome),
 );
+// Keep the donor detail route after the hospital's more specific /mine routes.
+bloodRequestRouter.get('/:requestId', asyncHandler(getDonorBloodRequest));
 bloodRequestRouter
   .route('/')
   .get(asyncHandler(listBloodRequests))

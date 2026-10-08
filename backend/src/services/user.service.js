@@ -229,7 +229,7 @@ export async function listVoluntaryDonationCentres() {
     role: 'hospital',
     'voluntaryDonation.enabled': true,
   })
-    .select('fullName email phone cityRegion location voluntaryDonation')
+    .select('fullName email phone cityRegion location voluntaryDonation hospitalVerificationStatus')
     .sort({ fullName: 1 })
     .lean();
 
@@ -240,6 +240,7 @@ export async function listVoluntaryDonationCentres() {
     phone: hospital.phone,
     cityRegion: hospital.cityRegion,
     feeXaf: hospital.voluntaryDonation.feeXaf,
+    hospitalVerificationStatus: hospital.hospitalVerificationStatus ?? 'unverified',
     ...(hospital.location?.coordinates?.length === 2
       ? { coordinates: [...hospital.location.coordinates] }
       : {}),

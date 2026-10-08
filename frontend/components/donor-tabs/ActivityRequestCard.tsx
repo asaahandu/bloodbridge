@@ -1,6 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
+
 import type { DonorResponse } from './DonorResponseContext';
 
 type ActivityRequestCardProps = {
@@ -51,7 +53,10 @@ export function ActivityRequestCard({ onScreeningPress, response }: ActivityRequ
           </Text>
         </View>
         <View className="flex-1">
-          <Text className="text-[13px] font-bold text-ink">{response.request.hospital}</Text>
+          <View className="flex-row flex-wrap items-center gap-1.5">
+            <Text className="text-[13px] font-bold text-ink">{response.request.hospital}</Text>
+            <HospitalVerificationBadge status={response.request.hospitalVerificationStatus} />
+          </View>
           <Text className="mt-1 text-[10px] text-muted">
             {response.request.location} · {response.request.distance}
           </Text>

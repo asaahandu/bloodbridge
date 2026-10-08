@@ -3,6 +3,7 @@ import { Tabs, usePathname } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { AiChatLauncher } from '@/components/ai-chat';
+import { SupportChatLauncher } from '@/components/support-chat';
 import { PushNotificationRegistrar } from '@/components/notifications/PushNotificationRegistrar';
 
 const palette = {
@@ -120,7 +121,12 @@ export default function HospitalTabsLayout() {
         }}
       />
       </Tabs>
-      {isMessagesRoute ? null : <AiChatLauncher audience="hospital" />}
+      {isMessagesRoute ? null : (
+        <>
+          <SupportChatLauncher />
+          <AiChatLauncher audience="hospital" />
+        </>
+      )}
     </View>
   );
 }

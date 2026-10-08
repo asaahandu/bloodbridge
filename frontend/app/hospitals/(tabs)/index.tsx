@@ -9,6 +9,7 @@ import {
     AttentionNeededSection,
     type HospitalRequest,
 } from '@/components/hospital-dashboard';
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
 import { useHospitalRequests } from '@/lib/hospital-data-hooks';
 import { formatElapsed, toHospitalRequest } from '@/lib/hospital-request-view';
 
@@ -51,9 +52,11 @@ export default function HospitalDashboardScreen() {
               </Text>
             </View>
             <Text className="text-[25px] font-bold tracking-[-0.6px] text-ink">Good morning</Text>
-            <Text className="mt-1 text-xs text-muted">
-              {user?.fullName ?? 'Hospital account'} · Live operations
-            </Text>
+            <View className="mt-1 flex-row flex-wrap items-center gap-1.5">
+              <Text className="text-xs text-muted">{user?.fullName ?? 'Hospital account'}</Text>
+              <HospitalVerificationBadge status={user?.hospitalVerificationStatus} />
+              <Text className="text-xs text-muted">· Live operations</Text>
+            </View>
           </View>
           <Pressable
             accessibilityLabel="Open notifications"

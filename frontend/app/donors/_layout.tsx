@@ -3,6 +3,7 @@ import { Tabs, usePathname } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 
 import { AiChatLauncher } from '@/components/ai-chat';
+import { SupportChatLauncher } from '@/components/support-chat';
 import { DonorResponseProvider } from '@/components/donor-tabs';
 import { PushNotificationRegistrar } from '@/components/notifications/PushNotificationRegistrar';
 
@@ -99,6 +100,7 @@ export default function DonorTabsLayout() {
           />
           <Tabs.Screen name="centre" options={{ href: null }} />
           <Tabs.Screen name="campaign" options={{ href: null }} />
+          <Tabs.Screen name="requests/[requestId]" options={{ href: null }} />
           <Tabs.Screen
             name="messages"
             options={{
@@ -124,7 +126,12 @@ export default function DonorTabsLayout() {
             }}
           />
         </Tabs>
-        {isMessagesRoute ? null : <AiChatLauncher audience="donor" />}
+        {isMessagesRoute ? null : (
+          <>
+            <SupportChatLauncher />
+            <AiChatLauncher audience="donor" />
+          </>
+        )}
       </View>
     </DonorResponseProvider>
   );

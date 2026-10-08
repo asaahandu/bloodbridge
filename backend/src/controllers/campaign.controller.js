@@ -29,6 +29,11 @@ export async function listCampaigns(_request, response) {
   response.json({ data: campaigns });
 }
 
+export async function listHospitalCampaigns(request, response) {
+  const campaigns = await campaignService.listHospitalCampaigns(request.hospital._id);
+  response.json({ data: campaigns });
+}
+
 export async function getCampaign(request, response) {
   const campaign = await campaignService.getCampaign(request.params.campaignId);
   response.json({ data: campaign });
@@ -54,4 +59,20 @@ export async function createCampaign(request, response) {
     request.hospital,
   );
   response.status(201).json({ data: campaign });
+}
+
+export async function updateHospitalCampaign(request, response) {
+  const campaign = await campaignService.updateHospitalCampaign(
+    request.params.campaignId,
+    request.body,
+    request.files,
+    request.body.keepImageIndices,
+    request.hospital,
+  );
+  response.json({ data: campaign });
+}
+
+export async function deleteHospitalCampaign(request, response) {
+  await campaignService.deleteHospitalCampaign(request.params.campaignId, request.hospital._id);
+  response.status(204).end();
 }

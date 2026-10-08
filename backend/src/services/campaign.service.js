@@ -64,11 +64,59 @@ function normalizeCampaignImages(files) {
   });
 }
 
-function serializeCampaign(campaign) {
+function normalizeRetainedImageIndices(value, imageCount) {
+  let indices;
+  try {
+    indices = JSON.parse(value);
+  } catch {
+    throw new AppError('Campaign images selection is invalid', 400);
+  }
+
+  if (
+    !Array.isArray(indices) ||
+    indices.some((index) => !Number.isInteger(index) || index < 0 || index >= imageCount) ||
+    new Set(indices).size !== indices.length
+  ) {
+    throw new AppError('Campaign images selection is invalid', 400);
+  }
+
+  return indices;
+}
+
+function validateCampaignImageCollection(images) {
+  if (images.length > 5) {
+    throw new AppError('Attach no more than five campaign images', 400);
+  }
+  if (images.reduce((total, image) => total + image.size, 0) > MAX_TOTAL_IMAGE_SIZE) {
+    throw new AppError('Campaign images must total 10 MB or less', 400);
+  }
+}
+
+function serializeCampaign(campaign, hospitalDetails = {}) {
+  const hospital =
+    campaign.hospitalId &&
+    typeof campaign.hospitalId === 'object' &&
+    campaign.hospitalId.fullName
+      ? campaign.hospitalId
+      : null;
+  const hospitalVerificationStatus =
+    hospital?.hospitalVerificationStatus ??
+    hospitalDetails.hospitalVerificationStatus ??
+    campaign.hospitalVerificationStatus ??
+    'unverified';
+
   return {
     id: String(campaign._id),
     title: campaign.title,
     hospitalName: campaign.hospitalName,
+    hospital: {
+      name: hospital?.fullName ?? campaign.hospitalName,
+      email: hospital?.email ?? hospitalDetails.email ?? null,
+      phone: hospital?.phone ?? hospitalDetails.phone ?? null,
+      cityRegion: hospital?.cityRegion ?? hospitalDetails.cityRegion ?? null,
+      verificationStatus: hospitalVerificationStatus,
+    },
+    hospitalVerificationStatus,
     date: campaign.date,
     location: campaign.location,
     description: campaign.description,
@@ -92,18 +140,70 @@ export async function createCampaign(fields, files, hospital) {
     images,
   });
 
-  return serializeCampaign(campaign);
+  return serializeCampaign(campaign, hospital);
 }
 
 export async function listCampaigns() {
-  const campaigns = await Campaign.find().sort({ date: 1, createdAt: -1 }).lean();
+  const campaigns = await Campaign.find()
+    .populate({
+      path: 'hospitalId',
+      select: 'fullName email phone cityRegion hospitalVerificationStatus',
+    })
+    .sort({ date: 1, createdAt: -1 })
+    .lean();
   return campaigns.map(serializeCampaign);
+}
+
+export async function listHospitalCampaigns(hospitalId) {
+  const campaigns = await Campaign.find({ hospitalId })
+    .populate({
+      path: 'hospitalId',
+      select: 'fullName email phone cityRegion hospitalVerificationStatus',
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+  return campaigns.map(serializeCampaign);
+}
+
+export async function updateHospitalCampaign(campaignId, fields, files, keepImageIndices, hospital) {
+  if (!mongoose.isValidObjectId(campaignId)) throw new AppError('Campaign not found', 404);
+
+  const campaign = await Campaign.findOne({
+    _id: campaignId,
+    hospitalId: hospital._id,
+  }).select('+images.content');
+  if (!campaign) throw new AppError('Campaign not found', 404);
+
+  const campaignFields = normalizeCampaignFields(fields);
+  const indices = normalizeRetainedImageIndices(keepImageIndices, campaign.images.length);
+  const images = [
+    ...indices.map((index) => campaign.images[index]),
+    ...normalizeCampaignImages(files),
+  ];
+  validateCampaignImageCollection(images);
+
+  Object.assign(campaign, campaignFields, { images });
+  await campaign.save();
+
+  return serializeCampaign(campaign, hospital);
+}
+
+export async function deleteHospitalCampaign(campaignId, hospitalId) {
+  if (!mongoose.isValidObjectId(campaignId)) throw new AppError('Campaign not found', 404);
+
+  const campaign = await Campaign.findOneAndDelete({ _id: campaignId, hospitalId });
+  if (!campaign) throw new AppError('Campaign not found', 404);
 }
 
 export async function getCampaign(campaignId) {
   if (!mongoose.isValidObjectId(campaignId)) throw new AppError('Campaign not found', 404);
 
-  const campaign = await Campaign.findById(campaignId).lean();
+  const campaign = await Campaign.findById(campaignId)
+    .populate({
+      path: 'hospitalId',
+      select: 'fullName email phone cityRegion hospitalVerificationStatus',
+    })
+    .lean();
   if (!campaign) throw new AppError('Campaign not found', 404);
 
   return serializeCampaign(campaign);

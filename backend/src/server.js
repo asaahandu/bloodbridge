@@ -11,7 +11,7 @@ async function startServer() {
   await connectDatabase();
 
   server = createServer(app);
-  attachSocketServer(server);
+  app.set('io', attachSocketServer(server));
   server.listen(env.port, '0.0.0.0', () => {
     console.log(`BloodBridge API listening on http://localhost:${env.port}`);
   });

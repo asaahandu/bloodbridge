@@ -34,7 +34,15 @@
         }
       ],
       "expo-secure-store",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow BloodBridge to access photos you select for hospital campaigns.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

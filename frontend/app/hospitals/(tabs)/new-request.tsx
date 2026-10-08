@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
     Image,
+    Modal,
     Pressable,
     ScrollView,
     Text,
@@ -20,9 +21,13 @@ import {
     type AuthenticatedUser,
     createBloodRequest,
     createHospitalCampaign,
+    deleteHospitalCampaign,
+    type CampaignRecord,
     type DonorMatchScan,
     draftBloodRequest,
     getHospitalRequestDonorMatches,
+    listHospitalCampaigns,
+    updateHospitalCampaign,
 } from '@/lib/api';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 
@@ -78,10 +83,24 @@ export default function NewRequestScreen() {
   const [campaignTitle, setCampaignTitle] = useState('');
   const [campaignDate, setCampaignDate] = useState('');
   const [campaignLocation, setCampaignLocation] = useState('');
-  const [campaignImages, setCampaignImages] = useState<DocumentPicker.DocumentPickerAsset[]>([]);
+  const [campaignImages, setCampaignImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [campaignDescription, setCampaignDescription] = useState('');
   const [campaignError, setCampaignError] = useState('');
   const [campaignSuccess, setCampaignSuccess] = useState('');
+  const [campaignListError, setCampaignListError] = useState('');
+  const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
+  const [editingCampaign, setEditingCampaign] = useState<CampaignRecord | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editKeepImageIndices, setEditKeepImageIndices] = useState<number[]>([]);
+  const [editNewImages, setEditNewImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [editError, setEditError] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignImagesLoading, setCampaignImagesLoading] = useState(false);
   const [campaignSubmitting, setCampaignSubmitting] = useState(false);
   const [bloodType, setBloodType] = useState('O+');
@@ -115,7 +134,32 @@ export default function NewRequestScreen() {
         if (active) {
           const hospital = user?.role === 'hospital' ? user : null;
           setFacility(hospital);
-          if (hospital) setCampaignLocation((current) => current || hospital.cityRegion);
+          if (hospital) {
+            setCampaignLocation((current) => current || hospital.cityRegion);
+            setCampaignsLoading(true);
+            void listHospitalCampaigns(hospital.authToken)
+              .then((loadedCampaigns) => {
+                if (active) {
+                  setCampaigns((current) => {
+                    const loadedIds = new Set(loadedCampaigns.map((campaign) => campaign.id));
+                    return [
+                      ...current.filter((campaign) => !loadedIds.has(campaign.id)),
+                      ...loadedCampaigns,
+                    ];
+                  });
+                }
+              })
+              .catch((error: unknown) => {
+                if (active) {
+                  setCampaignListError(
+                    error instanceof Error ? error.message : 'Unable to load your campaigns.',
+                  );
+                }
+              })
+              .finally(() => {
+                if (active) setCampaignsLoading(false);
+              });
+          }
         }
       })
       .finally(() => {
@@ -133,10 +177,11 @@ export default function NewRequestScreen() {
     setCampaignImagesLoading(true);
     setCampaignError('');
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: true,
-        multiple: true,
-        type: ['image/jpeg', 'image/png'],
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: maximumCampaignImages - campaignImages.length,
+        orderedSelection: true,
       });
       if (result.canceled) return;
 
@@ -145,18 +190,20 @@ export default function NewRequestScreen() {
         setCampaignError('Choose no more than five images.');
         return;
       }
-      if (nextImages.some((image) => (image.size ?? 0) > maximumCampaignImageSize)) {
+      if (nextImages.some((image) => (image.fileSize ?? 0) > maximumCampaignImageSize)) {
         setCampaignError('Each image must be 5 MB or smaller.');
         return;
       }
-      if (nextImages.reduce((total, image) => total + (image.size ?? 0), 0) > maximumCampaignImagesSize) {
+      if (nextImages.reduce((total, image) => total + (image.fileSize ?? 0), 0) > maximumCampaignImagesSize) {
         setCampaignError('Images must total 10 MB or less.');
         return;
       }
 
       setCampaignImages(nextImages);
-    } catch {
-      setCampaignError('Unable to open the image picker. Please try again.');
+    } catch (error) {
+      setCampaignError(
+        error instanceof Error ? error.message : 'Unable to open the photo library. Please try again.',
+      );
     } finally {
       setCampaignImagesLoading(false);
     }
@@ -190,7 +237,7 @@ export default function NewRequestScreen() {
 
     setCampaignSubmitting(true);
     try {
-      await createHospitalCampaign(facility.authToken, {
+      const createdCampaign = await createHospitalCampaign(facility.authToken, {
         title: campaignTitle.trim(),
         date: campaignDate,
         location: campaignLocation.trim(),
@@ -202,6 +249,21 @@ export default function NewRequestScreen() {
       setCampaignLocation(facility.cityRegion);
       setCampaignImages([]);
       setCampaignDescription('');
+      setCampaigns((current) => [
+        {
+          ...createdCampaign,
+          hospitalName: facility.fullName,
+          hospital: {
+            name: facility.fullName,
+            email: facility.email,
+            phone: facility.phone,
+            cityRegion: facility.cityRegion,
+            verificationStatus: facility.hospitalVerificationStatus ?? 'unverified',
+          },
+          images: createdCampaign.images.map((image, index) => ({ ...image, index })),
+        },
+        ...current,
+      ]);
       setCampaignSuccess('Campaign created and saved successfully.');
     } catch (error) {
       setCampaignError(
@@ -209,6 +271,142 @@ export default function NewRequestScreen() {
       );
     } finally {
       setCampaignSubmitting(false);
+    }
+  };
+
+  const openCampaignEditor = (campaign: CampaignRecord) => {
+    setEditingCampaign(campaign);
+    setEditTitle(campaign.title);
+    setEditDate(campaign.date.slice(0, 10));
+    setEditLocation(campaign.location);
+    setEditDescription(campaign.description);
+    setEditKeepImageIndices(campaign.images.map((image) => image.index));
+    setEditNewImages([]);
+    setEditError('');
+    setDeleteConfirm(false);
+  };
+
+  const closeCampaignEditor = () => {
+    if (editSubmitting || deleteSubmitting) return;
+    setEditingCampaign(null);
+    setDeleteConfirm(false);
+    setEditError('');
+  };
+
+  const chooseEditCampaignImages = async () => {
+    const remainingSlots =
+      maximumCampaignImages - editKeepImageIndices.length - editNewImages.length;
+    if (campaignImagesLoading || remainingSlots <= 0) return;
+
+    setCampaignImagesLoading(true);
+    setEditError('');
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: remainingSlots,
+        orderedSelection: true,
+      });
+      if (result.canceled) return;
+
+      const nextImages = [...editNewImages, ...result.assets];
+      if (
+        nextImages.some((image) => (image.fileSize ?? 0) > maximumCampaignImageSize)
+      ) {
+        setEditError('Each image must be 5 MB or smaller.');
+        return;
+      }
+      const retainedSize = editingCampaign?.images.reduce(
+        (total, image) =>
+          editKeepImageIndices.includes(image.index) ? total + image.size : total,
+        0,
+      ) ?? 0;
+      if (
+        retainedSize +
+          nextImages.reduce((total, image) => total + (image.fileSize ?? 0), 0) >
+        maximumCampaignImagesSize
+      ) {
+        setEditError('Images must total 10 MB or less.');
+        return;
+      }
+      setEditNewImages(nextImages);
+    } catch (error) {
+      setEditError(
+        error instanceof Error ? error.message : 'Unable to open the photo library. Please try again.',
+      );
+    } finally {
+      setCampaignImagesLoading(false);
+    }
+  };
+
+  const saveCampaignEdits = async () => {
+    if (!editingCampaign || !facility || editSubmitting) return;
+    setEditError('');
+    if (!editTitle.trim()) {
+      setEditError('Enter a campaign title.');
+      return;
+    }
+    if (!isValidCampaignDate(editDate)) {
+      setEditError('Enter a valid campaign date in YYYY-MM-DD format.');
+      return;
+    }
+    if (!editLocation.trim()) {
+      setEditError('Enter the campaign location.');
+      return;
+    }
+    if (!editDescription.trim()) {
+      setEditError('Add a description for the campaign.');
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const updatedCampaign = await updateHospitalCampaign(
+        facility.authToken,
+        editingCampaign.id,
+        {
+          title: editTitle.trim(),
+          date: editDate,
+          location: editLocation.trim(),
+          description: editDescription.trim(),
+          images: editNewImages,
+        },
+        editKeepImageIndices,
+      );
+      setCampaigns((current) =>
+        current.map((campaign) =>
+          campaign.id === updatedCampaign.id ? updatedCampaign : campaign,
+        ),
+      );
+      setEditingCampaign(null);
+      setEditNewImages([]);
+    } catch (error) {
+      setEditError(
+        error instanceof Error ? error.message : 'Unable to update the campaign. Please try again.',
+      );
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const removeCampaign = async () => {
+    if (!editingCampaign || !facility || deleteSubmitting) return;
+    setDeleteSubmitting(true);
+    setEditError('');
+    try {
+      await deleteHospitalCampaign(facility.authToken, editingCampaign.id);
+      setCampaigns((current) =>
+        current.filter((campaign) => campaign.id !== editingCampaign.id),
+      );
+      setEditingCampaign(null);
+      setDeleteConfirm(false);
+    } catch (error) {
+      setEditError(
+        error instanceof Error ? error.message : 'Unable to delete the campaign. Please try again.',
+      );
+      setDeleteConfirm(false);
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -444,12 +642,12 @@ export default function NewRequestScreen() {
                 {campaignImages.map((image, index) => (
                   <View className="relative" key={`${image.uri}-${index}`}>
                     <Image
-                      accessibilityLabel={image.name}
+                      accessibilityLabel={image.fileName ?? 'Selected campaign image'}
                       className="h-[76px] w-[76px] rounded-[10px] bg-[#F1F1EF]"
                       source={{ uri: image.uri }}
                     />
                     <Pressable
-                      accessibilityLabel={`Remove ${image.name}`}
+                      accessibilityLabel={`Remove ${image.fileName ?? 'selected image'}`}
                       accessibilityRole="button"
                       className="absolute -right-1 -top-1 h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-ink"
                       onPress={() => setCampaignImages((current) => current.filter((_, imageIndex) => imageIndex !== index))}>
@@ -514,10 +712,90 @@ export default function NewRequestScreen() {
             <Pressable
               accessibilityRole="button"
               className="h-12 flex-row items-center justify-center gap-2 rounded-[13px] bg-ink active:opacity-75"
+              disabled={campaignSubmitting}
               onPress={createCampaign}>
-              <Text className="text-xs font-extrabold text-white">Create campaign</Text>
-              <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
+              {campaignSubmitting ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Text className="text-xs font-extrabold text-white">Create campaign</Text>
+                  <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
+                </>
+              )}
             </Pressable>
+
+            <View className="border-t border-line pt-5">
+              <View className="mb-3 flex-row items-center justify-between">
+                <View>
+                  <Text className="text-sm font-bold text-ink">Your campaigns</Text>
+                  <Text className="mt-1 text-[10px] text-muted">
+                    Campaigns created by your hospital
+                  </Text>
+                </View>
+                <Text className="text-[10px] font-semibold text-muted">
+                  {campaigns.length} {campaigns.length === 1 ? 'campaign' : 'campaigns'}
+                </Text>
+              </View>
+
+              {campaignsLoading ? (
+                <View className="flex-row items-center gap-2 rounded-[13px] bg-[#FAFAF9] p-4">
+                  <ActivityIndicator color="#8E1722" size="small" />
+                  <Text className="text-[11px] text-muted">Loading your campaigns…</Text>
+                </View>
+              ) : campaignListError ? (
+                <View className="rounded-[13px] bg-error-soft p-3">
+                  <Text className="text-[11px] font-semibold text-error">
+                    {campaignListError}
+                  </Text>
+                </View>
+              ) : campaigns.length === 0 ? (
+                <View className="items-center rounded-[13px] bg-[#FAFAF9] px-4 py-6">
+                  <Ionicons color="#8B8B88" name="megaphone-outline" size={22} />
+                  <Text className="mt-2 text-[11px] font-semibold text-muted">
+                    No campaigns created yet
+                  </Text>
+                </View>
+              ) : (
+                <View className="gap-2.5">
+                  {campaigns.map((campaign) => (
+                    <Pressable
+                      accessibilityLabel={`Edit campaign ${campaign.title}`}
+                      accessibilityRole="button"
+                      className="flex-row items-start gap-3 rounded-[15px] border border-line bg-[#FAFAF9] p-3.5 active:opacity-75"
+                      key={campaign.id}
+                      onPress={() => openCampaignEditor(campaign)}>
+                      <View className="h-10 w-10 items-center justify-center rounded-[12px] bg-blood-red-soft">
+                        <Ionicons color="#8E1722" name="megaphone-outline" size={19} />
+                      </View>
+                      <View className="min-w-0 flex-1">
+                        <Text className="text-xs font-bold text-ink" numberOfLines={2}>
+                          {campaign.title}
+                        </Text>
+                        <Text className="mt-1 text-[10px] text-muted" numberOfLines={1}>
+                          {new Intl.DateTimeFormat(undefined, {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            timeZone: 'UTC',
+                          }).format(new Date(campaign.date))} · {campaign.location}
+                        </Text>
+                        <Text
+                          className="mt-1 text-[10px] leading-[15px] text-muted"
+                          numberOfLines={2}>
+                          {campaign.description}
+                        </Text>
+                        {campaign.images.length > 0 ? (
+                          <Text className="mt-1 text-[9px] font-semibold text-blood-red">
+                            {campaign.images.length} {campaign.images.length === 1 ? 'image' : 'images'}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Ionicons color="#737373" name="create-outline" size={17} />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
         ) : (
           <>
@@ -835,6 +1113,242 @@ export default function NewRequestScreen() {
         scan={matchScan}
         visible={Boolean(submittedRequest)}
       />
+
+      <Modal
+        animationType="slide"
+        onRequestClose={closeCampaignEditor}
+        transparent
+        visible={Boolean(editingCampaign)}>
+        <View className="flex-1 justify-end bg-black/50">
+          <SafeAreaView className="max-h-[92%] rounded-t-[24px] bg-canvas" edges={['bottom']}>
+            <View className="flex-row items-center justify-between border-b border-line px-5 py-4">
+              <View>
+                <Text className="text-[16px] font-extrabold text-ink">Edit campaign</Text>
+                <Text className="mt-1 text-[10px] text-muted">
+                  Update campaign details and photos
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Close campaign editor"
+                accessibilityRole="button"
+                className="h-9 w-9 items-center justify-center rounded-full bg-[#F1F1EF]"
+                disabled={editSubmitting || deleteSubmitting}
+                onPress={closeCampaignEditor}>
+                <Ionicons color="#292929" name="close" size={20} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              className="px-5"
+              contentContainerClassName="gap-4 py-5"
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}>
+              <View>
+                <Text className="mb-2 text-xs font-bold text-ink">Campaign title</Text>
+                <TextInput
+                  accessibilityLabel="Edit campaign title"
+                  autoCapitalize="sentences"
+                  className="h-12 rounded-[13px] border border-line bg-white px-3.5 text-sm text-ink"
+                  maxLength={100}
+                  onChangeText={setEditTitle}
+                  value={editTitle}
+                />
+              </View>
+
+              <View>
+                <Text className="mb-2 text-xs font-bold text-ink">Date</Text>
+                <TextInput
+                  accessibilityLabel="Edit campaign date"
+                  className="h-12 rounded-[13px] border border-line bg-white px-3.5 text-sm text-ink"
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                  onChangeText={setEditDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#8B8B88"
+                  value={editDate}
+                />
+              </View>
+
+              <View>
+                <Text className="mb-2 text-xs font-bold text-ink">Location</Text>
+                <TextInput
+                  accessibilityLabel="Edit campaign location"
+                  autoCapitalize="words"
+                  className="h-12 rounded-[13px] border border-line bg-white px-3.5 text-sm text-ink"
+                  maxLength={160}
+                  onChangeText={setEditLocation}
+                  value={editLocation}
+                />
+              </View>
+
+              <View>
+                <Text className="mb-2 text-xs font-bold text-ink">Description</Text>
+                <TextInput
+                  accessibilityLabel="Edit campaign description"
+                  className="min-h-[112px] rounded-[13px] border border-line bg-white px-3.5 py-3 text-sm leading-5 text-ink"
+                  maxLength={1000}
+                  multiline
+                  onChangeText={setEditDescription}
+                  textAlignVertical="top"
+                  value={editDescription}
+                />
+                <Text className="mt-1 text-right text-[10px] text-muted">
+                  {editDescription.length}/1000
+                </Text>
+              </View>
+
+              <View>
+                <View className="mb-2 flex-row items-center justify-between">
+                  <Text className="text-xs font-bold text-ink">Campaign images</Text>
+                  <Text className="text-[10px] text-muted">
+                    {editKeepImageIndices.length + editNewImages.length}/{maximumCampaignImages}
+                  </Text>
+                </View>
+                {editingCampaign?.images.length ? (
+                  <View className="mb-2 gap-2">
+                    {editingCampaign.images.map((image) => {
+                      const retained = editKeepImageIndices.includes(image.index);
+                      return (
+                        <Pressable
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: retained }}
+                          className={`flex-row items-center gap-2 rounded-[11px] border p-3 ${
+                            retained ? 'border-line bg-white' : 'border-[#E7C4C7] bg-blood-red-soft'
+                          }`}
+                          key={`${editingCampaign.id}-${image.index}`}
+                          onPress={() =>
+                            setEditKeepImageIndices((current) =>
+                              retained
+                                ? current.filter((index) => index !== image.index)
+                                : [...current, image.index].sort((a, b) => a - b),
+                            )
+                          }>
+                          <Ionicons
+                            color={retained ? '#1F6A4C' : '#8E1722'}
+                            name={retained ? 'checkbox' : 'square-outline'}
+                            size={17}
+                          />
+                          <Text className="flex-1 text-[11px] text-ink" numberOfLines={1}>
+                            {image.name}
+                          </Text>
+                          <Text className="text-[9px] text-muted">
+                            {(image.size / (1024 * 1024)).toFixed(1)} MB
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text className="mb-2 text-[10px] text-muted">No saved images.</Text>
+                )}
+                {editNewImages.map((image, index) => (
+                  <View
+                    className="mb-2 flex-row items-center gap-2 rounded-[11px] border border-line bg-white p-2"
+                    key={`${image.uri}-${index}`}>
+                    <Image
+                      accessibilityLabel={image.fileName ?? 'New campaign image'}
+                      className="h-10 w-10 rounded-[8px] bg-[#F1F1EF]"
+                      source={{ uri: image.uri }}
+                    />
+                    <Text className="flex-1 text-[10px] text-ink" numberOfLines={1}>
+                      {image.fileName ?? `New image ${index + 1}`}
+                    </Text>
+                    <Pressable
+                      accessibilityLabel={`Remove ${image.fileName ?? 'new image'}`}
+                      accessibilityRole="button"
+                      onPress={() =>
+                        setEditNewImages((current) =>
+                          current.filter((_, imageIndex) => imageIndex !== index),
+                        )
+                      }>
+                      <Ionicons color="#8E1722" name="close-circle-outline" size={20} />
+                    </Pressable>
+                  </View>
+                ))}
+                {editKeepImageIndices.length + editNewImages.length < maximumCampaignImages ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    className="h-11 flex-row items-center justify-center gap-2 rounded-[12px] border border-dashed border-[#D8B7BA] bg-blood-red-soft"
+                    disabled={campaignImagesLoading}
+                    onPress={() => void chooseEditCampaignImages()}>
+                    {campaignImagesLoading ? (
+                      <ActivityIndicator color="#8E1722" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons color="#8E1722" name="images-outline" size={17} />
+                        <Text className="text-[11px] font-bold text-blood-red">Add photos</Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {editError ? (
+                <View className="flex-row items-start gap-2 rounded-[12px] bg-error-soft p-3">
+                  <Ionicons color="#B42318" name="alert-circle-outline" size={17} />
+                  <Text className="flex-1 text-[11px] font-semibold leading-[16px] text-error">
+                    {editError}
+                  </Text>
+                </View>
+              ) : null}
+
+              {deleteConfirm ? (
+                <View className="gap-3 rounded-[14px] border border-[#E7C4C7] bg-blood-red-soft p-3.5">
+                  <Text className="text-xs font-bold text-ink">Delete this campaign?</Text>
+                  <Text className="text-[10px] leading-[15px] text-muted">
+                    This permanently removes the campaign and its saved images.
+                  </Text>
+                  <View className="flex-row gap-2">
+                    <Pressable
+                      accessibilityRole="button"
+                      className="h-10 flex-1 items-center justify-center rounded-[11px] bg-white"
+                      disabled={deleteSubmitting}
+                      onPress={() => setDeleteConfirm(false)}>
+                      <Text className="text-[11px] font-bold text-ink">Keep campaign</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      className="h-10 flex-1 flex-row items-center justify-center gap-2 rounded-[11px] bg-[#B42318]"
+                      disabled={deleteSubmitting}
+                      onPress={() => void removeCampaign()}>
+                      {deleteSubmitting ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text className="text-[11px] font-bold text-white">Delete permanently</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View className="flex-row gap-2">
+                  <Pressable
+                    accessibilityRole="button"
+                    className="h-12 flex-1 flex-row items-center justify-center gap-2 rounded-[13px] border border-[#E7C4C7] bg-white"
+                    disabled={editSubmitting || deleteSubmitting}
+                    onPress={() => setDeleteConfirm(true)}>
+                    <Ionicons color="#B42318" name="trash-outline" size={17} />
+                    <Text className="text-xs font-bold text-[#B42318]">Delete</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    className="h-12 flex-[1.5] flex-row items-center justify-center gap-2 rounded-[13px] bg-ink active:opacity-75"
+                    disabled={editSubmitting || deleteSubmitting}
+                    onPress={() => void saveCampaignEdits()}>
+                    {editSubmitting ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <>
+                        <Text className="text-xs font-extrabold text-white">Save changes</Text>
+                        <Ionicons color="#FFFFFF" name="checkmark" size={17} />
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DonorScreenHeader, ProfileSection } from '@/components/donor-tabs';
+import { DonorVerificationModal } from '@/components/donor-verification/DonorVerificationModal';
 import { registerPushNotificationsForCurrentDevice } from '@/components/notifications/PushNotificationRegistrar';
 import {
     type DonorAvailabilityPreset,
@@ -86,6 +87,10 @@ export default function DonorProfileScreen() {
   >('needs_verification');
   const [nextEligibleAt, setNextEligibleAt] = useState('');
   const [savingMatchingProfile, setSavingMatchingProfile] = useState(false);
+  const [verificationModalVisible, setVerificationModalVisible] = useState(false);
+  const [donorVerificationStatus, setDonorVerificationStatus] = useState<
+    'not_started' | 'completed'
+  >('not_started');
 
   useEffect(() => {
     if (!user) return;
@@ -169,6 +174,14 @@ export default function DonorProfileScreen() {
     router.replace('/login');
   };
 
+  const completeDonorVerification = () => {
+    setDonorVerificationStatus('completed');
+    Alert.alert(
+      'Verification completed locally',
+      'Nothing was uploaded or saved to the BloodBridge database. This status will reset when the screen reloads.',
+    );
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
       <StatusBar style="dark" />
@@ -193,6 +206,9 @@ export default function DonorProfileScreen() {
                 {user?.cityRegion ?? 'Location not available'}
               </Text>
             </View>
+            {donorVerificationStatus === 'completed' ? (
+              <Ionicons color="#73C59F" name="checkmark-circle" size={22} />
+            ) : null}
             <View
               className={`rounded-xl px-2.5 py-2 ${
                 eligibilityStatus === 'interval_clear' ? 'bg-success-soft' : 'bg-blood-red-soft'
@@ -210,6 +226,34 @@ export default function DonorProfileScreen() {
             </View>
           </View>
         </View>
+
+        <ProfileSection
+          description="Confirm your identity on this device. No verification data is uploaded or saved."
+          title="Identity verification">
+          <Pressable
+            accessibilityLabel="Open donor identity verification"
+            accessibilityRole="button"
+            className="flex-row items-center gap-3 py-4 active:opacity-70"
+            onPress={() => setVerificationModalVisible(true)}>
+            <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#F1F1EF]">
+              <Ionicons color="#5F5F5C" name="shield-checkmark-outline" size={17} />
+            </View>
+            <View className="flex-1">
+              <Text className="text-[10px] font-semibold text-muted">Verification status</Text>
+              <Text className="mt-1 text-xs font-bold text-ink">
+                {donorVerificationStatus === 'completed'
+                  ? 'Completed for this session'
+                  : 'Not verified'}
+              </Text>
+              <Text className="mt-1 text-[10px] font-semibold text-blood-red">
+                {donorVerificationStatus === 'completed'
+                  ? 'Tap to verify again'
+                  : 'Tap to start verification'}
+              </Text>
+            </View>
+            <Ionicons color="#8E1722" name="chevron-forward" size={18} />
+          </Pressable>
+        </ProfileSection>
 
         <ProfileSection title="Donation & eligibility">
           <DetailRow
@@ -388,6 +432,14 @@ export default function DonorProfileScreen() {
           <Text className="text-xs font-extrabold text-blood-red">Sign out</Text>
         </Pressable>
       </ScrollView>
+      {verificationModalVisible ? (
+        <DonorVerificationModal
+          initialDonorName={user?.fullName ?? ''}
+          onClose={() => setVerificationModalVisible(false)}
+          onComplete={completeDonorVerification}
+          visible
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

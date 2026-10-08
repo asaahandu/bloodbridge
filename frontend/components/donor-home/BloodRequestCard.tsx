@@ -1,6 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, Text, View } from 'react-native';
 
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
+
 import { donorHomeColors as colors } from './theme';
 import type { BloodRequest } from './types';
 
@@ -34,10 +36,11 @@ export function BloodRequestCard({
         </View>
 
         <View className="ml-3.5 flex-1">
-          <View className="flex-row items-center gap-[7px]">
+          <View className="flex-row items-center gap-[5px]">
             <Text className="shrink text-sm font-bold text-ink" numberOfLines={1}>
               {request.hospital}
             </Text>
+            <HospitalVerificationBadge status={request.hospitalVerificationStatus} />
             {urgency !== 'standard' ? (
               <View className="flex-row items-center gap-1 rounded-[9px] bg-blood-red-soft px-1.5 py-1">
                 <View className="h-[5px] w-[5px] rounded-full bg-blood-red" />
@@ -64,7 +67,7 @@ export function BloodRequestCard({
 
       {response ? (
         <Pressable
-          accessibilityHint={response === 'accepted' ? 'Opens eligibility screening' : undefined}
+          accessibilityHint={response === 'accepted' ? 'Opens request details' : undefined}
           accessibilityRole={response === 'accepted' ? 'button' : undefined}
           className={`mt-3 flex-row items-center justify-center gap-2 rounded-[13px] px-3 py-3 ${
             response === 'accepted' ? 'bg-success-soft' : 'bg-[#EFEFED]'
@@ -81,7 +84,7 @@ export function BloodRequestCard({
               response === 'accepted' ? 'text-success' : 'text-muted'
             }`}>
             {response === 'accepted'
-              ? 'Accepted · Open eligibility screening'
+              ? 'Accepted · View request details'
               : 'Marked not available'}
           </Text>
         </Pressable>

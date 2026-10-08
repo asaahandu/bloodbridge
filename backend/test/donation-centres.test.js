@@ -29,6 +29,7 @@ test('lists enabled donation centres with contact details but without unrelated 
             email: 'private@example.com',
             phone: '+237600000000',
             voluntaryDonation: { enabled: true, feeXaf: 2500 },
+            hospitalVerificationStatus: 'verified',
             location: { coordinates: [9.7, 4.05] },
           },
         ];
@@ -40,7 +41,7 @@ test('lists enabled donation centres with contact details but without unrelated 
     const centres = await listVoluntaryDonationCentres();
 
     assert.deepEqual(query, { role: 'hospital', 'voluntaryDonation.enabled': true });
-    assert.equal(projection, 'fullName email phone cityRegion location voluntaryDonation');
+    assert.equal(projection, 'fullName email phone cityRegion location voluntaryDonation hospitalVerificationStatus');
     assert.deepEqual(sort, { fullName: 1 });
     assert.deepEqual(centres, [
       {
@@ -50,6 +51,7 @@ test('lists enabled donation centres with contact details but without unrelated 
         phone: '+237600000000',
         cityRegion: 'Douala',
         feeXaf: 2500,
+        hospitalVerificationStatus: 'verified',
         coordinates: [9.7, 4.05],
       },
     ]);

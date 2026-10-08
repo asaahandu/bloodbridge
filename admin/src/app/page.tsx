@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { Icon, type IconName } from "@/components/icons";
+import { AdminHospitalVerificationBadge } from "@/components/admin-page";
 import { MobileNavigation, Sidebar } from "@/components/sidebar";
 import {
   DashboardDataError,
@@ -162,7 +163,7 @@ async function DashboardContent() {
 
       <article className="panel requests-panel" id="blood-requests">
         <div className="panel-heading"><div><h2>Active blood requests</h2><p>Current requests and database-backed donor response progress</p></div><a className="text-link" href="#blood-requests">{numberFormatter.format(data.metrics.activeRequests.total)} total <Icon name="chevron" size={14} /></a></div>
-        <div className="table-scroll"><table><thead><tr><th>Blood</th><th>Hospital</th><th>Units</th><th>Responses</th><th>Confirmed</th><th>Urgency</th><th>Created</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{data.activeRequests.length ? data.activeRequests.map((request) => <tr key={request.id}><td><span className="blood-badge table-badge">{request.bloodType}</span></td><td><strong className="hospital-name">{request.hospitalName}</strong><small>{request.city}</small></td><td>{request.unitsNeeded}</td><td>{request.donorProgress.responded} / {request.donorProgress.notified}</td><td>{request.donorProgress.confirmed}</td><td><span className={`status-pill ${request.urgency}`}>{request.urgency}</span></td><td>{formatRelativeTime(request.createdAt, data.generatedAt)}</td><td><button className="icon-button subtle" type="button" aria-label={`Open ${request.hospitalName} request`}><Icon name="more" size={18} /></button></td></tr>) : <tr><td className="empty-table" colSpan={8}>There are no active blood requests.</td></tr>}</tbody></table></div>
+        <div className="table-scroll"><table><thead><tr><th>Blood</th><th>Hospital</th><th>Units</th><th>Responses</th><th>Confirmed</th><th>Urgency</th><th>Created</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{data.activeRequests.length ? data.activeRequests.map((request) => <tr key={request.id}><td><span className="blood-badge table-badge">{request.bloodType}</span></td><td><span className="hospital-name-row"><strong className="hospital-name">{request.hospitalName}</strong><AdminHospitalVerificationBadge status={request.hospitalVerificationStatus} /></span><small>{request.city}</small></td><td>{request.unitsNeeded}</td><td>{request.donorProgress.responded} / {request.donorProgress.notified}</td><td>{request.donorProgress.confirmed}</td><td><span className={`status-pill ${request.urgency}`}>{request.urgency}</span></td><td>{formatRelativeTime(request.createdAt, data.generatedAt)}</td><td><button className="icon-button subtle" type="button" aria-label={`Open ${request.hospitalName} request`}><Icon name="more" size={18} /></button></td></tr>) : <tr><td className="empty-table" colSpan={8}>There are no active blood requests.</td></tr>}</tbody></table></div>
       </article>
     </section>
   </div>;
@@ -170,10 +171,10 @@ async function DashboardContent() {
 
 export default function Home() {
   return <div className="app-shell" id="top">
-    <Sidebar />
+    <Sidebar activeItem="Overview" />
     <main className="main-content">
       <header className="topbar">
-        <div className="mobile-brand-row"><MobileNavigation /><span className="mobile-title">BloodBridge</span></div>
+        <div className="mobile-brand-row"><MobileNavigation activeItem="Overview" /><span className="mobile-title">BloodBridge</span></div>
         <form className="search" role="search"><Icon name="search" size={18} /><input aria-label="Search BloodBridge admin" placeholder="Search hospitals, donors, requests..." type="search" /><kbd>⌘ K</kbd></form>
         <div className="topbar-actions"><button className="icon-button notification-button" type="button" aria-label="View notifications"><Icon name="bell" size={20} /><span /></button><span className="topbar-divider" /><div className="topbar-profile"><span className="avatar small">BA</span><span><strong>BloodBridge Admin</strong><small>Super admin</small></span><Icon name="chevron" size={15} /></div></div>
       </header>

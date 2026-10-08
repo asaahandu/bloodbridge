@@ -89,6 +89,7 @@ function mapRequest(
       bloodType: storedRequest.bloodType,
       distance: formatDistance(distanceKm),
       hospital: storedRequest.hospitalName,
+      hospitalVerificationStatus: storedRequest.hospitalVerificationStatus,
       location: storedRequest.ward || storedRequest.city,
       neededBy: formatNeededBy(storedRequest.neededBy),
       urgency: storedRequest.urgency,

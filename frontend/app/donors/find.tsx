@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DonorScreenHeader } from '@/components/donor-tabs';
+import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
 import {
   type CampaignRecord,
   getCampaignImageSource,
@@ -30,10 +31,20 @@ function CampaignPreviewImage({
   onError,
 }: {
   accessibilityLabel: string;
-  source: string;
+  source?: string;
   onError: (error: string) => void;
 }) {
   const [aspectRatio, setAspectRatio] = useState(1.5);
+
+  if (!source) {
+    return (
+      <View
+        className="w-full items-center justify-center bg-[#EFEFED]"
+        style={{ aspectRatio }}>
+        <ActivityIndicator color="#8E1722" size="small" />
+      </View>
+    );
+  }
 
   return (
     <View className="w-full bg-[#EFEFED]" style={{ aspectRatio }}>
@@ -43,7 +54,9 @@ function CampaignPreviewImage({
         resizeMode="cover"
         source={{ uri: source }}
         onLoad={({ nativeEvent }) => {
-          const { height, width } = nativeEvent.source;
+          const imageSize = nativeEvent?.source;
+          if (!imageSize) return;
+          const { height, width } = imageSize;
           if (width > 0 && height > 0) {
             setAspectRatio((current) => {
               const next = width / height;
@@ -51,7 +64,9 @@ function CampaignPreviewImage({
             });
           }
         }}
-        onError={({ nativeEvent }) => onError(nativeEvent.error)}
+        onError={({ nativeEvent }) =>
+          onError(nativeEvent?.error ?? 'Unable to load campaign image.')
+        }
       />
     </View>
   );
@@ -247,7 +262,10 @@ export default function DonorFindScreen() {
                       <Ionicons color="#8E1722" name="business-outline" size={22} />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-sm font-bold text-ink">{centre.name}</Text>
+                      <View className="flex-row flex-wrap items-center gap-1.5">
+                        <Text className="text-sm font-bold text-ink">{centre.name}</Text>
+                        <HospitalVerificationBadge status={centre.hospitalVerificationStatus} />
+                      </View>
                       <Text className="mt-1 text-[11px] text-muted">{centre.cityRegion}</Text>
                     </View>
                     <View className="items-end">
@@ -355,6 +373,9 @@ export default function DonorFindScreen() {
                           <Text className="flex-1 text-[11px] font-semibold text-muted">
                             Organized by {campaign.hospitalName}
                           </Text>
+                          <HospitalVerificationBadge
+                            status={campaign.hospitalVerificationStatus}
+                          />
                           <Ionicons color="#8B8B88" name="chevron-forward" size={18} />
                         </View>
                         <View className="mt-3 flex-row items-center gap-2">

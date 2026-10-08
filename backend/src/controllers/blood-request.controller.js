@@ -80,6 +80,15 @@ export async function listBloodRequests(request, response) {
   response.json({ count: bloodRequests.length, data: bloodRequests });
 }
 
+export async function getDonorBloodRequest(request, response) {
+  const donor = await getAuthenticatedDonor(request);
+  const detail = await bloodRequestService.getDonorBloodRequest(
+    request.params.requestId,
+    donor._id,
+  );
+  response.json({ data: detail });
+}
+
 export async function listDonorActivity(request, response) {
   const donor = await getAuthenticatedDonor(request);
   const activities = await bloodRequestService.listDonorActivity(donor._id);

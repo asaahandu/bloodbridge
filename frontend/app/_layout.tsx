@@ -35,6 +35,7 @@ function RootLayoutNav() {
         <Stack.Screen name="hospitals" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="ai-chat/index" options={{ headerShown: false }} />
+        <Stack.Screen name="support" options={{ headerShown: false }} />
         <Stack.Screen name="modal/index" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
