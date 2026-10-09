@@ -9,6 +9,7 @@ import {
   registerExpoPushToken,
   registerUser,
   saveUserLocation,
+  updateAccountProfile,
   updateDonationProfile,
   updateHospitalVoluntaryDonation,
   updateNotificationPreferences,
@@ -21,6 +22,7 @@ userRouter.post('/login', asyncHandler(loginUser));
 userRouter.delete('/me/session', asyncHandler(logoutUser));
 userRouter.post('/donor-match-preview', asyncHandler(previewDonorMatches));
 userRouter.get('/me', asyncHandler(getCurrentUser));
+userRouter.patch('/me/profile', asyncHandler(updateAccountProfile));
 userRouter.get('/donation-centres', asyncHandler(listVoluntaryDonationCentres));
 userRouter.patch('/me/donation-profile', asyncHandler(updateDonationProfile));
 userRouter.patch('/me/voluntary-donation', asyncHandler(updateHospitalVoluntaryDonation));

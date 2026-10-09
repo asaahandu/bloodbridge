@@ -99,7 +99,10 @@ export async function dispatchRequestEvent({
   });
   if (!isNewNotification) return;
 
-  const users = await User.find({ _id: { $in: recipients.map((recipient) => recipient.id) } })
+  const users = await User.find({
+    _id: { $in: recipients.map((recipient) => recipient.id) },
+    accountStatus: { $ne: 'suspended' },
+  })
     .select('expoPushTokens notificationPreferences')
     .lean();
   const messages = users.flatMap((user) => {

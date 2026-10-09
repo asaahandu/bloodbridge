@@ -40,7 +40,11 @@ test('lists enabled donation centres with contact details but without unrelated 
   try {
     const centres = await listVoluntaryDonationCentres();
 
-    assert.deepEqual(query, { role: 'hospital', 'voluntaryDonation.enabled': true });
+    assert.deepEqual(query, {
+      role: 'hospital',
+      accountStatus: { $ne: 'suspended' },
+      'voluntaryDonation.enabled': true,
+    });
     assert.equal(projection, 'fullName email phone cityRegion location voluntaryDonation hospitalVerificationStatus');
     assert.deepEqual(sort, { fullName: 1 });
     assert.deepEqual(centres, [

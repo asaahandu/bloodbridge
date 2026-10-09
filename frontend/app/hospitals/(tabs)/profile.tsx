@@ -15,7 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { KycRequestModal } from '@/components/hospital-kyc/KycRequestModal';
 import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
-import { submitHospitalKycRequest, updateHospitalVoluntaryDonation } from '@/lib/api';
+import { AccountContactEditor } from '@/components/AccountContactEditor';
+import {
+  submitHospitalKycRequest,
+  updateAccountProfile,
+  updateHospitalVoluntaryDonation,
+} from '@/lib/api';
 import { saveAuthenticatedUser, signOutAuthenticatedUser } from '@/lib/auth-session';
 import { useHospitalAccount } from '@/lib/hospital-data-hooks';
 
@@ -29,7 +34,7 @@ type VoluntaryDonationDraft = {
 
 export default function HospitalProfileScreen() {
   const router = useRouter();
-  const { error, loading, refresh, requests, user } = useHospitalAccount();
+  const { error, loading, refresh, requests, setUser, user } = useHospitalAccount();
   const [matchAlerts, setMatchAlerts] = useState(true);
   const [criticalAlerts, setCriticalAlerts] = useState(true);
   const [kycModalVisible, setKycModalVisible] = useState(false);
@@ -127,6 +132,19 @@ export default function HospitalProfileScreen() {
     }
   };
 
+  const saveContactProfile = async (profile: {
+    cityRegion: string;
+    email: string;
+    phone: string;
+  }) => {
+    if (!user) {
+      throw new Error('Hospital account details are not available. Try refreshing the profile.');
+    }
+    const updatedUser = await updateAccountProfile(user, profile);
+    await saveAuthenticatedUser(updatedUser);
+    setUser(updatedUser);
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
       <StatusBar style="dark" />
@@ -170,6 +188,22 @@ export default function HospitalProfileScreen() {
           </View>
         </View>
 
+        <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Account details</Text>
+        {user ? (
+          <AccountContactEditor
+            cityRegion={user.cityRegion}
+            email={user.email}
+            onSave={saveContactProfile}
+            phone={user.phone}
+          />
+        ) : (
+          <View className="rounded-[21px] border border-line bg-card px-4 py-4">
+            <Text className="text-xs font-semibold text-muted">
+              {loading ? 'Loading account details...' : 'Account details are unavailable.'}
+            </Text>
+          </View>
+        )}
+
         <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Facility details</Text>
         <View className="rounded-[21px] border border-line bg-card px-4">
           <Pressable
@@ -196,24 +230,15 @@ export default function HospitalProfileScreen() {
             </View>
             {canSubmitKyc ? <Ionicons color="#8E1722" name="chevron-forward" size={18} /> : null}
           </Pressable>
-          {[
-            ['location-outline', 'City or region', user?.cityRegion ?? 'Not available'],
-            ['navigate-outline', 'Saved GPS location', locationValue],
-            ['call-outline', 'Account phone', user?.phone ?? 'Not available'],
-            ['mail-outline', 'Account email', user?.email ?? 'Not available'],
-          ].map(([icon, label, value], index) => (
-            <View
-              className={`flex-row items-center gap-3 py-4 ${index < 3 ? 'border-b border-line' : ''}`}
-              key={label}>
-              <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#F1F1EF]">
-                <Ionicons color="#5F5F5C" name={icon as keyof typeof Ionicons.glyphMap} size={17} />
-              </View>
-              <View className="flex-1">
-                <Text className="text-[10px] font-semibold text-muted">{label}</Text>
-                <Text className="mt-1 text-xs font-bold text-ink">{value}</Text>
-              </View>
+          <View className="flex-row items-center gap-3 py-4">
+            <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#F1F1EF]">
+              <Ionicons color="#5F5F5C" name="navigate-outline" size={17} />
             </View>
-          ))}
+            <View className="flex-1">
+              <Text className="text-[10px] font-semibold text-muted">Saved GPS location</Text>
+              <Text className="mt-1 text-xs font-bold text-ink">{locationValue}</Text>
+            </View>
+          </View>
         </View>
 
         <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Voluntary donation</Text>

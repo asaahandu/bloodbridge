@@ -65,29 +65,37 @@ export function BloodRequestCard({
         </View>
       </Pressable>
 
-      {response ? (
+      {onPress ? (
         <Pressable
-          accessibilityHint={response === 'accepted' ? 'Opens request details' : undefined}
-          accessibilityRole={response === 'accepted' ? 'button' : undefined}
-          className={`mt-3 flex-row items-center justify-center gap-2 rounded-[13px] px-3 py-3 ${
-            response === 'accepted' ? 'bg-success-soft' : 'bg-[#EFEFED]'
-          }`}
-          disabled={response !== 'accepted' || !onPress}
+          accessibilityHint="Opens the full blood request details"
+          accessibilityLabel={`View details for request from ${request.hospital}`}
+          accessibilityRole="button"
+          className="mt-3 h-11 flex-row items-center justify-center gap-2 rounded-[13px] border border-line bg-field active:opacity-75"
           onPress={() => onPress?.(request)}>
+          <Ionicons color="#8E1722" name="document-text-outline" size={16} />
+          <Text className="text-[11px] font-bold text-ink">View request details</Text>
+          <Ionicons color="#8E1722" name="arrow-forward" size={15} />
+        </Pressable>
+      ) : null}
+
+      {response ? (
+        <View
+          accessibilityRole="text"
+          className={`mt-2 flex-row items-center justify-center gap-2 rounded-[13px] px-3 py-2.5 ${
+            response === 'accepted' ? 'bg-success-soft' : 'bg-[#EFEFED]'
+          }`}>
           <Ionicons
             color={response === 'accepted' ? '#1F6A4C' : '#737373'}
             name={response === 'accepted' ? 'checkmark-circle' : 'remove-circle-outline'}
-            size={17}
+            size={16}
           />
           <Text
-            className={`text-[11px] font-bold ${
+            className={`text-[10px] font-bold ${
               response === 'accepted' ? 'text-success' : 'text-muted'
             }`}>
-            {response === 'accepted'
-              ? 'Accepted · View request details'
-              : 'Marked not available'}
+            {response === 'accepted' ? 'You accepted this request' : 'Marked not available'}
           </Text>
-        </Pressable>
+        </View>
       ) : (
         <View className="mt-3 flex-row gap-2 border-t border-line pt-3">
           <Pressable

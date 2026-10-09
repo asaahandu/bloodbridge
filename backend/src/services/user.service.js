@@ -109,6 +109,9 @@ export async function loginUser(payload) {
   if (!user || !passwordMatches) {
     throw new AppError('Invalid email or password', 401);
   }
+  if (user.accountStatus === 'suspended') {
+    throw new AppError('This account has been suspended', 403);
+  }
 
   const authToken = randomBytes(32).toString('hex');
   await User.updateOne(
@@ -134,6 +137,9 @@ export async function authenticateUserToken(token, requiredRole) {
     $or: [{ authTokenHash: tokenHash }, { 'authSessions.tokenHash': tokenHash }],
   });
   if (!user) throw new AppError('Authentication is invalid or expired', 401);
+  if (user.accountStatus === 'suspended') {
+    throw new AppError('This account has been suspended', 403);
+  }
 
   if (requiredRole && user.role !== requiredRole) {
     throw new AppError('This action is not available for your account role', 403);
@@ -161,6 +167,32 @@ export async function logoutUser(token) {
 
 export async function getCurrentUser(token) {
   const user = await authenticateUserToken(token);
+  return serializeUser(user);
+}
+
+export async function updateAccountProfile(userId, payload) {
+  const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
+  const phone = typeof payload?.phone === 'string' ? payload.phone.trim() : '';
+  const cityRegion =
+    typeof payload?.cityRegion === 'string' ? payload.cityRegion.trim() : '';
+
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    throw new AppError('Enter a valid email address', 400);
+  }
+  if (phone.replace(/\D/g, '').length < 8) {
+    throw new AppError('Enter a valid phone number with at least 8 digits', 400);
+  }
+  if (cityRegion.length < 2 || cityRegion.length > 120) {
+    throw new AppError('City or region must contain between 2 and 120 characters', 400);
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $set: { email, phone, cityRegion } },
+    { new: true, runValidators: true },
+  );
+  if (!user) throw new AppError('User not found', 404);
+
   return serializeUser(user);
 }
 
@@ -227,6 +259,7 @@ export async function updateHospitalVoluntaryDonation(userId, payload) {
 export async function listVoluntaryDonationCentres() {
   const hospitals = await User.find({
     role: 'hospital',
+    accountStatus: { $ne: 'suspended' },
     'voluntaryDonation.enabled': true,
   })
     .select('fullName email phone cityRegion location voluntaryDonation hospitalVerificationStatus')
@@ -354,6 +387,7 @@ export async function previewDonorMatches(payload) {
         spherical: true,
         query: {
           role: 'donor',
+          accountStatus: { $ne: 'suspended' },
           bloodType: { $in: compatibleBloodTypes },
         },
       },

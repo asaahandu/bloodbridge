@@ -39,6 +39,15 @@ export function attachSocketServer(httpServer) {
   });
 
   io.on('connection', (socket) => {
+    socket.use(async (_packet, next) => {
+      try {
+        socket.user = await authenticateUserToken(getToken(socket));
+        next();
+      } catch (error) {
+        socket.disconnect(true);
+        next(error);
+      }
+    });
     socket.join(roomForUser(socket.user._id));
 
     socket.on('join-conversation', async ({ requestId, donorId }, callback) => {

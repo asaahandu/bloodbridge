@@ -6,6 +6,7 @@ export type AdminUser = {
   email: string;
   phone: string;
   role: "donor" | "hospital";
+  suspended: boolean;
   cityRegion: string;
   bloodType?: string;
   hospitalVerificationStatus?: "unverified" | "pending" | "rejected" | "verified";
@@ -45,6 +46,7 @@ function isAdminUser(value: unknown): value is AdminUser {
     typeof value.email === "string" &&
     typeof value.phone === "string" &&
     (value.role === "donor" || value.role === "hospital") &&
+    typeof value.suspended === "boolean" &&
     typeof value.cityRegion === "string" &&
     (value.bloodType === undefined || typeof value.bloodType === "string") &&
     validHospitalStatus &&

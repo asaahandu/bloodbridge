@@ -1,8 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import mongoose from 'mongoose';
+import { AIResult } from '../src/models/ai-result.model.js';
+import { BloodRequest } from '../src/models/blood-request.model.js';
+import { Campaign } from '../src/models/campaign.model.js';
+import { Conversation } from '../src/models/conversation.model.js';
+import { DonorRequestActivity } from '../src/models/donor-request-activity.model.js';
+import { KycRequest } from '../src/models/kyc-request.model.js';
+import { Message } from '../src/models/message.model.js';
+import { Notification } from '../src/models/notification.model.js';
+import { SupportConversation } from '../src/models/support-conversation.model.js';
+import { SupportMessage } from '../src/models/support-message.model.js';
 import { User } from '../src/models/user.model.js';
-import { getAdminUsers } from '../src/services/admin-dashboard.service.js';
+import {
+  deleteAdminUser,
+  getAdminUsers,
+  setAdminUserSuspended,
+} from '../src/services/admin-dashboard.service.js';
+import { authenticateUserToken } from '../src/services/user.service.js';
 
 test('returns paginated admin users without sensitive account fields', async () => {
   const originals = {
@@ -60,6 +76,7 @@ test('returns paginated admin users without sensitive account fields', async () 
     assert.equal(result.pageSize, 50);
     assert.equal(result.users[0].id, 'user-51');
     assert.equal(result.users[0].bloodType, 'O+');
+    assert.equal(result.users[0].suspended, false);
     assert.equal(result.users[0].createdAt, '2026-10-01T10:00:00.000Z');
     assert.equal('passwordHash' in result.users[0], false);
     assert.equal(queryDetails.skip, 50);
@@ -68,6 +85,113 @@ test('returns paginated admin users without sensitive account fields', async () 
   } finally {
     User.countDocuments = originals.countDocuments;
     User.find = originals.find;
+  }
+});
+
+test('suspending an admin user clears existing authentication and location sessions', async () => {
+  const original = User.findByIdAndUpdate;
+  let update;
+  User.findByIdAndUpdate = (_id, changes) => {
+    update = changes;
+    return {
+      select() { return this; },
+      async lean() { return { _id: 'user-1', accountStatus: 'suspended' }; },
+    };
+  };
+
+  try {
+    const result = await setAdminUserSuspended('user-1', true);
+    assert.deepEqual(result, { id: 'user-1', suspended: true });
+    assert.deepEqual(update.$set, { accountStatus: 'suspended', authSessions: [] });
+    assert.deepEqual(update.$unset, { authTokenHash: 1, locationTrackingTokenHash: 1 });
+  } finally {
+    User.findByIdAndUpdate = original;
+  }
+});
+
+test('suspended users cannot continue using existing authentication tokens', async () => {
+  const original = User.findOne;
+  User.findOne = async () => ({ _id: 'user-1', role: 'donor', accountStatus: 'suspended' });
+
+  try {
+    await assert.rejects(
+      authenticateUserToken('existing-token'),
+      (error) => error.statusCode === 403 && error.message.includes('suspended'),
+    );
+  } finally {
+    User.findOne = original;
+  }
+});
+
+test('deleting an admin user removes linked records in one transaction', async () => {
+  const userId = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+  const requestId = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+  const supportConversationId = 'cccccccccccccccccccccccc';
+  const originals = {
+    startSession: mongoose.startSession,
+    userFindById: User.findById,
+    userDeleteOne: User.deleteOne,
+  };
+  const deletions = [];
+  const fakeSession = {
+    async withTransaction(work) { await work(); },
+    async endSession() {},
+  };
+  const modelMethods = [
+    [Campaign, 'deleteMany'],
+    [KycRequest, 'deleteMany'],
+    [BloodRequest, 'find'],
+    [BloodRequest, 'deleteMany'],
+    [DonorRequestActivity, 'deleteMany'],
+    [Conversation, 'deleteMany'],
+    [Message, 'deleteMany'],
+    [AIResult, 'deleteMany'],
+    [Notification, 'deleteMany'],
+    [SupportMessage, 'deleteMany'],
+    [SupportConversation, 'find'],
+    [SupportConversation, 'deleteMany'],
+  ];
+  const modelOriginals = modelMethods.map(([model, method]) => [model, method, model[method]]);
+
+  mongoose.startSession = async () => fakeSession;
+  User.findById = () => ({
+    select() { return this; },
+    session() { return this; },
+    async lean() { return { _id: userId }; },
+  });
+  User.deleteOne = async (filter, options) => {
+    deletions.push({ model: 'User', filter, options });
+    return { deletedCount: 1 };
+  };
+  for (const [model, method] of modelMethods) {
+    if (method === 'find') {
+      model[method] = (filter) => ({
+        select() { return this; },
+        session() { return this; },
+        async lean() {
+          return model === BloodRequest ? [{ _id: requestId }] : [{ _id: supportConversationId }];
+        },
+      });
+    } else {
+      model[method] = async (filter, options) => {
+        deletions.push({ model: model.modelName, filter, options });
+      };
+    }
+  }
+
+  try {
+    assert.deepEqual(await deleteAdminUser(userId), { id: userId });
+    assert.equal(deletions.length, modelMethods.filter(([, method]) => method === 'deleteMany').length + 1);
+    assert.ok(deletions.every(({ options }) => options.session === fakeSession));
+    assert.ok(deletions.some(({ model, filter }) =>
+      model === 'SupportMessage' &&
+      filter.$or.some((entry) => entry.conversationId?.$in?.[0] === supportConversationId)));
+    assert.equal(deletions.at(-1).model, 'User');
+  } finally {
+    mongoose.startSession = originals.startSession;
+    User.findById = originals.userFindById;
+    User.deleteOne = originals.userDeleteOne;
+    for (const [model, method, original] of modelOriginals) model[method] = original;
   }
 });
 

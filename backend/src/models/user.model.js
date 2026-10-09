@@ -198,6 +198,12 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Role is required'],
       index: true,
     },
+    accountStatus: {
+      type: String,
+      enum: ['active', 'suspended'],
+      default: 'active',
+      index: true,
+    },
     hospitalVerificationStatus: {
       type: String,
       enum: ['unverified', 'pending', 'rejected', 'verified'],

@@ -6,11 +6,14 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HospitalVerificationBadge } from '@/components/HospitalVerificationBadge';
+import { DonationCentreMap } from '@/components/donor-home/DonationCentreMap';
 import {
+  type AuthenticatedUser,
   getDonorBloodRequest,
   type DonorBloodRequestDetail,
+  getCurrentUser,
 } from '@/lib/api';
-import { getAuthenticatedUser } from '@/lib/auth-session';
+import { getAuthenticatedUser, saveAuthenticatedUser } from '@/lib/auth-session';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -50,6 +53,8 @@ export default function DonorRequestDetailScreen() {
   const router = useRouter();
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
   const [detail, setDetail] = useState<DonorBloodRequestDetail | null>(null);
+  const [donor, setDonor] = useState<AuthenticatedUser | null>(null);
+  const [locationError, setLocationError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -60,7 +65,25 @@ export default function DonorRequestDetailScreen() {
         throw new Error('Please sign in as a donor to view this request.');
       }
       if (!requestId) throw new Error('This blood request could not be identified.');
-      setDetail(await getDonorBloodRequest(session.authToken, requestId));
+      const [requestResult, donorResult] = await Promise.allSettled([
+        getDonorBloodRequest(session.authToken, requestId),
+        getCurrentUser(session),
+      ]);
+      if (requestResult.status === 'rejected') throw requestResult.reason;
+
+      setDetail(requestResult.value);
+      if (donorResult.status === 'fulfilled') {
+        setDonor(donorResult.value);
+        setLocationError('');
+        await saveAuthenticatedUser(donorResult.value);
+      } else {
+        setDonor(session);
+        setLocationError(
+          donorResult.reason instanceof Error
+            ? donorResult.reason.message
+            : 'Unable to refresh your saved location.',
+        );
+      }
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : 'Unable to load this request.',
@@ -77,6 +100,24 @@ export default function DonorRequestDetailScreen() {
   );
 
   const request = detail?.request;
+  const donorCoordinates = donor?.location?.coordinates;
+  const hospitalCoordinates = request?.facilityLocation?.coordinates;
+  const validDonorCoordinates =
+    donorCoordinates &&
+    Number.isFinite(donorCoordinates[0]) &&
+    Number.isFinite(donorCoordinates[1]) &&
+    Math.abs(donorCoordinates[0]) <= 180 &&
+    Math.abs(donorCoordinates[1]) <= 90
+      ? donorCoordinates
+      : undefined;
+  const validHospitalCoordinates =
+    hospitalCoordinates &&
+    Number.isFinite(hospitalCoordinates[0]) &&
+    Number.isFinite(hospitalCoordinates[1]) &&
+    Math.abs(hospitalCoordinates[0]) <= 180 &&
+    Math.abs(hospitalCoordinates[1]) <= 90
+      ? hospitalCoordinates
+      : undefined;
   const urgencyLabel =
     request?.urgency === 'standard' ? 'Routine' : request?.urgency ?? 'Request';
   const decisionLabel =
@@ -193,6 +234,44 @@ export default function DonorRequestDetailScreen() {
                 />
               ) : null}
             </View>
+
+            <Text className="mb-3 mt-7 text-[17px] font-bold text-ink">Location map</Text>
+            {validDonorCoordinates && validHospitalCoordinates ? (
+              <>
+                <DonationCentreMap
+                  donorCoordinates={validDonorCoordinates}
+                  donorName="Your saved location"
+                  hospitalCoordinates={validHospitalCoordinates}
+                  hospitalName={request.hospitalName}
+                />
+                <View className="mt-3 flex-row gap-3">
+                  <View className="flex-1 flex-row items-center gap-2">
+                    <View className="h-3 w-3 rounded-full bg-ink" />
+                    <Text className="flex-1 text-[10px] font-semibold text-muted">
+                      Your saved location
+                    </Text>
+                  </View>
+                  <View className="flex-1 flex-row items-center gap-2">
+                    <View className="h-3 w-3 rounded-full bg-blood-red" />
+                    <Text className="flex-1 text-[10px] font-semibold text-muted">
+                      Hospital
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View className="rounded-[19px] border border-line bg-card p-4">
+                <Text className="text-xs font-bold text-ink">
+                  {!validHospitalCoordinates
+                    ? 'This request does not have a valid hospital GPS location.'
+                    : 'Your saved GPS location is not available.'}
+                </Text>
+                <Text className="mt-1 text-[10px] leading-[15px] text-muted">
+                  A map showing both locations will appear when both GPS locations are available.
+                  {locationError ? ` ${locationError}` : ''}
+                </Text>
+              </View>
+            )}
 
             <View className="mt-4 flex-row items-center gap-2 rounded-[15px] border border-line bg-card p-4">
               <Ionicons

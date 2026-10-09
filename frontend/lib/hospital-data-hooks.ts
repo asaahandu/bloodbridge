@@ -76,5 +76,5 @@ export function useHospitalAccount() {
     }, [refresh]),
   );
 
-  return { error, loading, refresh, requests, user };
+  return { error, loading, refresh, requests, setUser, user };
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import {
   confirmDonorResponse,
+  cancelHospitalBloodRequest,
   createBloodRequest,
   draftBloodRequest,
   getDonorBloodRequest,
@@ -14,6 +15,7 @@ import {
   listBloodRequests,
   recordDonorOutcome,
   respondToBloodRequest,
+  updateHospitalBloodRequest,
 } from '../controllers/blood-request.controller.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -31,6 +33,14 @@ bloodRequestRouter.get(
   asyncHandler(getHospitalRequestRankedDonorMatches),
 );
 bloodRequestRouter.get('/mine/:requestId', asyncHandler(getHospitalBloodRequest));
+bloodRequestRouter.patch(
+  '/mine/:requestId',
+  asyncHandler(updateHospitalBloodRequest),
+);
+bloodRequestRouter.patch(
+  '/mine/:requestId/cancel',
+  asyncHandler(cancelHospitalBloodRequest),
+);
 bloodRequestRouter.get(
   '/mine/:requestId/donor-responses/:donorId',
   asyncHandler(getHospitalDonorResponseDetail),

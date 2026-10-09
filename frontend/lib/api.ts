@@ -165,6 +165,15 @@ export type CreateBloodRequestPayload = {
   neededBy: string;
 };
 
+export type UpdateBloodRequestPayload = {
+  bloodType: string;
+  unitsNeeded: number;
+  urgency: 'standard' | 'urgent' | 'critical';
+  internalReference: string;
+  ward?: string;
+  rewardAmount: number | null;
+};
+
 type CreateBloodRequestResponse = {
   data: {
     _id: string;
@@ -541,6 +550,19 @@ export async function getCurrentUser(session: AuthenticatedUser): Promise<Authen
   return normalizeAuthenticatedUser(response.data.user, session.authToken);
 }
 
+export async function updateAccountProfile(
+  session: AuthenticatedUser,
+  profile: { email: string; phone: string; cityRegion: string },
+): Promise<AuthenticatedUser> {
+  const response = await apiRequest<CurrentUserResponse>('/users/me/profile', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${session.authToken}` },
+    body: JSON.stringify(profile),
+  });
+
+  return normalizeAuthenticatedUser(response.data.user, session.authToken);
+}
+
 export async function submitHospitalKycRequest(
   authToken: string,
   hospitalName: string,
@@ -751,6 +773,35 @@ export async function getHospitalBloodRequest(authToken: string, requestId: stri
     `/blood-requests/mine/${encodeURIComponent(requestId)}`,
     {
       method: 'GET',
+      headers: { Authorization: `Bearer ${authToken}` },
+    },
+  );
+
+  return response.data;
+}
+
+export async function updateHospitalBloodRequest(
+  authToken: string,
+  requestId: string,
+  payload: UpdateBloodRequestPayload,
+) {
+  const response = await apiRequest<BloodRequestDetailResponse>(
+    `/blood-requests/mine/${encodeURIComponent(requestId)}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  return response.data;
+}
+
+export async function cancelHospitalBloodRequest(authToken: string, requestId: string) {
+  const response = await apiRequest<BloodRequestDetailResponse>(
+    `/blood-requests/mine/${encodeURIComponent(requestId)}/cancel`,
+    {
+      method: 'PATCH',
       headers: { Authorization: `Bearer ${authToken}` },
     },
   );

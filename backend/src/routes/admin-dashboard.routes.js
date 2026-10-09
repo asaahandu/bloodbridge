@@ -9,6 +9,8 @@ import {
   getAdminKycRequest,
   getAdminKycRequests,
   getAdminUsers,
+  updateAdminUserStatus,
+  deleteAdminUser,
   updateAdminKycRequestStatus,
 } from '../controllers/admin-dashboard.controller.js';
 import { asyncHandler } from '../utils/async-handler.js';
@@ -24,6 +26,16 @@ adminDashboardRouter.get(
   '/users',
   authenticateAdminDashboard,
   asyncHandler(getAdminUsers),
+);
+adminDashboardRouter.patch(
+  '/users/:userId',
+  authenticateAdminDashboard,
+  asyncHandler(updateAdminUserStatus),
+);
+adminDashboardRouter.delete(
+  '/users/:userId',
+  authenticateAdminDashboard,
+  asyncHandler(deleteAdminUser),
 );
 adminDashboardRouter.get(
   '/blood-requests',

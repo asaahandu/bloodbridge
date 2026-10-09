@@ -2,20 +2,46 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DonorSearchModal } from '@/components/hospital-dashboard';
 import {
   confirmHospitalDonorResponse,
+  cancelHospitalBloodRequest,
   getHospitalBloodRequest,
   getHospitalRequestDonorMatches,
   recordHospitalDonorOutcome,
+  updateHospitalBloodRequest,
   type DonorMatchScan,
   type StoredBloodRequest,
 } from '@/lib/api';
 import { getAuthenticatedUser } from '@/lib/auth-session';
 import { formatElapsed } from '@/lib/hospital-request-view';
+
+const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const urgencyLevels = [
+  { label: 'Routine', value: 'standard' },
+  { label: 'Urgent', value: 'urgent' },
+  { label: 'Critical', value: 'critical' },
+] as const;
+
+type RequestDraft = {
+  bloodType: string;
+  unitsNeeded: number;
+  urgency: StoredBloodRequest['urgency'];
+  internalReference: string;
+  ward: string;
+  rewardAmount: string;
+};
 
 export default function HospitalRequestDetailScreen() {
   const router = useRouter();
@@ -29,6 +55,10 @@ export default function HospitalRequestDetailScreen() {
   const [rankedMatches, setRankedMatches] = useState<DonorMatchScan>();
   const [rankedMatchesLoading, setRankedMatchesLoading] = useState(false);
   const [rankedMatchesError, setRankedMatchesError] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<RequestDraft>();
+  const [savingRequest, setSavingRequest] = useState(false);
+  const [cancellingRequest, setCancellingRequest] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!requestId) {
@@ -60,6 +90,7 @@ export default function HospitalRequestDetailScreen() {
   const progress = request?.donorProgress;
   const donorResponses = request?.donorResponses ?? [];
   const urgencyLabel = request?.urgency === 'standard' ? 'Routine' : request?.urgency ?? 'Open';
+  const matchingCriteriaLocked = (progress?.notified ?? 0) > 0;
 
   const confirmDonor = async (donorId: string) => {
     if (!requestId || confirmingDonorId) return;
@@ -109,6 +140,116 @@ export default function HospitalRequestDetailScreen() {
           style: outcome === 'no_show' ? 'destructive' : 'default',
           text: 'Record outcome',
           onPress: () => void saveOutcome(donorId, outcome),
+        },
+      ],
+    );
+  };
+
+  const startEditing = () => {
+    if (!request || request.status !== 'active') return;
+    setDraft({
+      bloodType: request.bloodType,
+      unitsNeeded: request.unitsNeeded,
+      urgency: request.urgency,
+      internalReference: request.internalReference,
+      ward: request.ward ?? '',
+      rewardAmount: request.rewardAmount == null ? '' : String(request.rewardAmount),
+    });
+    setEditing(true);
+  };
+
+  const saveRequest = async () => {
+    if (!requestId || !draft || savingRequest) return;
+    const reference = draft.internalReference.trim();
+    if (!reference) {
+      Alert.alert('Reference required', 'Add a ward, case label, or internal reference.');
+      return;
+    }
+
+    const enteredReward = draft.rewardAmount.trim() ? Number(draft.rewardAmount) : 0;
+    const rewardAmount = enteredReward > 0 ? enteredReward : null;
+    if (
+      rewardAmount !== null &&
+      (!Number.isFinite(rewardAmount) || rewardAmount < 0 || rewardAmount > 999999999)
+    ) {
+      Alert.alert('Invalid reward', 'Enter a reward amount between 0 and 999,999,999 FCFA.');
+      return;
+    }
+
+    setSavingRequest(true);
+    try {
+      const session = await getAuthenticatedUser();
+      if (!session || session.role !== 'hospital') throw new Error('Please sign in as a hospital.');
+      const updatedRequest = await updateHospitalBloodRequest(session.authToken, requestId, {
+        bloodType: draft.bloodType,
+        unitsNeeded: draft.unitsNeeded,
+        urgency: draft.urgency,
+        internalReference: reference,
+        ward: draft.ward.trim(),
+        rewardAmount,
+      });
+      setRequest((current) =>
+        current
+          ? {
+              ...current,
+              ...updatedRequest,
+              donorProgress: current.donorProgress,
+              donorResponses: current.donorResponses,
+            }
+          : updatedRequest,
+      );
+      setEditing(false);
+      Alert.alert('Request updated', 'Your active blood request has been updated.');
+    } catch (saveError) {
+      Alert.alert(
+        'Request not updated',
+        saveError instanceof Error ? saveError.message : 'Please try again.',
+      );
+    } finally {
+      setSavingRequest(false);
+    }
+  };
+
+  const cancelRequest = async () => {
+    if (!requestId || cancellingRequest) return;
+
+    setCancellingRequest(true);
+    try {
+      const session = await getAuthenticatedUser();
+      if (!session || session.role !== 'hospital') throw new Error('Please sign in as a hospital.');
+      const cancelledRequest = await cancelHospitalBloodRequest(session.authToken, requestId);
+      setRequest((current) =>
+        current
+          ? {
+              ...current,
+              ...cancelledRequest,
+              donorProgress: current.donorProgress,
+              donorResponses: current.donorResponses,
+            }
+          : cancelledRequest,
+      );
+      setEditing(false);
+      Alert.alert('Request cancelled', 'This request is no longer active.');
+    } catch (cancelError) {
+      Alert.alert(
+        'Request not cancelled',
+        cancelError instanceof Error ? cancelError.message : 'Please try again.',
+      );
+    } finally {
+      setCancellingRequest(false);
+    }
+  };
+
+  const confirmCancelRequest = () => {
+    Alert.alert(
+      'Cancel this request?',
+      'It will be removed from active requests and donors will no longer be able to respond.',
+      [
+        { style: 'cancel', text: 'Keep request' },
+        {
+          style: 'destructive',
+          text: 'Cancel request',
+          onPress: () => void cancelRequest(),
         },
       ],
     );
@@ -192,6 +333,201 @@ export default function HospitalRequestDetailScreen() {
               </View>
             </View>
 
+            {request.status === 'active' ? (
+              <View className="mt-4 rounded-[20px] border border-line bg-card p-4">
+                {!editing || !draft ? (
+                  <View className="flex-row gap-2.5">
+                    <Pressable
+                      accessibilityRole="button"
+                      className="h-11 flex-1 flex-row items-center justify-center gap-2 rounded-[13px] bg-ink active:opacity-75"
+                      onPress={startEditing}>
+                      <Ionicons color="#FFFFFF" name="create-outline" size={17} />
+                      <Text className="text-xs font-extrabold text-white">Edit request</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      className="h-11 flex-1 flex-row items-center justify-center gap-2 rounded-[13px] bg-error-soft active:opacity-75 disabled:opacity-50"
+                      disabled={cancellingRequest}
+                      onPress={confirmCancelRequest}>
+                      {cancellingRequest ? (
+                        <ActivityIndicator color="#A52A32" size="small" />
+                      ) : (
+                        <>
+                          <Ionicons color="#A52A32" name="close-circle-outline" size={17} />
+                          <Text className="text-xs font-extrabold text-error">Cancel request</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View>
+                    <Text className="text-[16px] font-bold text-ink">Edit request details</Text>
+                    <Text className="mb-4 mt-1 text-[11px] leading-[16px] text-muted">
+                      Changes are saved to this active request.
+                    </Text>
+
+                    <Text className="text-[12px] font-bold text-ink">Blood type needed</Text>
+                    <View className="mt-2 flex-row flex-wrap gap-2">
+                      {bloodTypes.map((type) => (
+                        <Pressable
+                          accessibilityRole="radio"
+                          accessibilityState={{
+                            checked: draft.bloodType === type,
+                            disabled: matchingCriteriaLocked,
+                          }}
+                          className={`h-10 w-[22%] items-center justify-center rounded-xl border ${
+                            draft.bloodType === type
+                              ? 'border-blood-red bg-blood-red'
+                              : 'border-line bg-[#FAFAF9]'
+                          } ${matchingCriteriaLocked ? 'opacity-60' : ''}`}
+                          disabled={matchingCriteriaLocked}
+                          key={type}
+                          onPress={() => setDraft({ ...draft, bloodType: type })}>
+                          <Text
+                            className={`text-xs font-extrabold ${
+                              draft.bloodType === type ? 'text-white' : 'text-ink'
+                            }`}>
+                            {type}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+
+                    <Text className="mt-5 text-[12px] font-bold text-ink">Urgency</Text>
+                    <View className="mt-2 flex-row gap-2">
+                      {urgencyLevels.map((level) => (
+                        <Pressable
+                          accessibilityRole="radio"
+                          accessibilityState={{
+                            checked: draft.urgency === level.value,
+                            disabled: matchingCriteriaLocked,
+                          }}
+                          className={`flex-1 items-center rounded-xl border py-3 ${
+                            draft.urgency === level.value
+                              ? 'border-ink bg-ink'
+                              : 'border-line bg-[#FAFAF9]'
+                          } ${matchingCriteriaLocked ? 'opacity-60' : ''}`}
+                          disabled={matchingCriteriaLocked}
+                          key={level.value}
+                          onPress={() => setDraft({ ...draft, urgency: level.value })}>
+                          <Text
+                            className={`text-[10px] font-bold ${
+                              draft.urgency === level.value ? 'text-white' : 'text-muted'
+                            }`}>
+                            {level.label}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {matchingCriteriaLocked ? (
+                      <Text className="mt-2 text-[10px] leading-[15px] text-muted">
+                        Donors have already been notified, so blood type and urgency are locked.
+                        Cancel and create a new request to change them.
+                      </Text>
+                    ) : null}
+
+                    <Text className="mt-5 text-[12px] font-bold text-ink">Internal reference</Text>
+                    <TextInput
+                      className="mt-2 h-12 rounded-[13px] border border-line bg-[#FAFAF9] px-4 text-sm text-ink"
+                      maxLength={100}
+                      onChangeText={(internalReference) =>
+                        setDraft({ ...draft, internalReference })
+                      }
+                      placeholder="Example: Case 2482"
+                      placeholderTextColor="#9B9B97"
+                      value={draft.internalReference}
+                    />
+
+                    <Text className="mt-4 text-[12px] font-bold text-ink">
+                      Ward or department <Text className="font-medium text-muted">(optional)</Text>
+                    </Text>
+                    <TextInput
+                      className="mt-2 h-12 rounded-[13px] border border-line bg-[#FAFAF9] px-4 text-sm text-ink"
+                      maxLength={120}
+                      onChangeText={(ward) => setDraft({ ...draft, ward })}
+                      placeholder="Example: Emergency department"
+                      placeholderTextColor="#9B9B97"
+                      value={draft.ward}
+                    />
+
+                    <View className="mt-5 flex-row items-center justify-between">
+                      <View>
+                        <Text className="text-[12px] font-bold text-ink">Units needed</Text>
+                        <Text className="mt-1 text-[10px] text-muted">Choose 1 to 20 units</Text>
+                      </View>
+                      <View className="flex-row items-center rounded-[13px] border border-line bg-[#FAFAF9] p-1">
+                        <Pressable
+                          accessibilityLabel="Decrease units"
+                          className="h-9 w-9 items-center justify-center rounded-[10px] bg-white"
+                          onPress={() =>
+                            setDraft({
+                              ...draft,
+                              unitsNeeded: Math.max(1, draft.unitsNeeded - 1),
+                            })
+                          }>
+                          <Ionicons color="#121212" name="remove" size={18} />
+                        </Pressable>
+                        <Text className="w-10 text-center text-sm font-extrabold text-ink">
+                          {draft.unitsNeeded}
+                        </Text>
+                        <Pressable
+                          accessibilityLabel="Increase units"
+                          className="h-9 w-9 items-center justify-center rounded-[10px] bg-ink"
+                          onPress={() =>
+                            setDraft({
+                              ...draft,
+                              unitsNeeded: Math.min(20, draft.unitsNeeded + 1),
+                            })
+                          }>
+                          <Ionicons color="#FFFFFF" name="add" size={18} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <Text className="mt-5 text-[12px] font-bold text-ink">
+                      Proposed reward <Text className="font-medium text-muted">(optional)</Text>
+                    </Text>
+                    <TextInput
+                      accessibilityLabel="Proposed reward amount in FCFA"
+                      className="mt-2 h-12 rounded-[13px] border border-line bg-[#FAFAF9] px-4 text-sm font-bold text-ink"
+                      keyboardType="number-pad"
+                      onChangeText={(rewardAmount) =>
+                        setDraft({
+                          ...draft,
+                          rewardAmount: rewardAmount.replace(/\D/g, '').slice(0, 9),
+                        })
+                      }
+                      placeholder="FCFA"
+                      placeholderTextColor="#9B9B97"
+                      value={draft.rewardAmount}
+                    />
+
+                    <View className="mt-5 flex-row gap-2.5">
+                      <Pressable
+                        className="h-11 flex-1 items-center justify-center rounded-[13px] border border-line bg-white active:opacity-75"
+                        disabled={savingRequest}
+                        onPress={() => setEditing(false)}>
+                        <Text className="text-xs font-bold text-muted">Discard</Text>
+                      </Pressable>
+                      <Pressable
+                        className="h-11 flex-1 flex-row items-center justify-center gap-2 rounded-[13px] bg-blood-red active:opacity-75 disabled:opacity-50"
+                        disabled={savingRequest}
+                        onPress={() => void saveRequest()}>
+                        {savingRequest ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <>
+                            <Ionicons color="#FFFFFF" name="checkmark" size={17} />
+                            <Text className="text-xs font-extrabold text-white">Save changes</Text>
+                          </>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ) : null}
+
             <Text className="mb-3 mt-7 text-[19px] font-bold text-ink">Donor progress</Text>
             <View className="flex-row gap-2.5">
               {[
@@ -214,13 +550,15 @@ export default function HospitalRequestDetailScreen() {
               ))}
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              className="mt-3 h-12 flex-row items-center justify-center gap-2 rounded-[14px] bg-ink active:opacity-75"
-              onPress={() => void loadRankedMatches()}>
-              <Ionicons color="#F5A3AA" name="analytics-outline" size={18} />
-              <Text className="text-xs font-extrabold text-white">View ranked donor matches</Text>
-            </Pressable>
+            {request.status === 'active' ? (
+              <Pressable
+                accessibilityRole="button"
+                className="mt-3 h-12 flex-row items-center justify-center gap-2 rounded-[14px] bg-ink active:opacity-75"
+                onPress={() => void loadRankedMatches()}>
+                <Ionicons color="#F5A3AA" name="analytics-outline" size={18} />
+                <Text className="text-xs font-extrabold text-white">View ranked donor matches</Text>
+              </Pressable>
+            ) : null}
 
             <Text className="mb-3 mt-7 text-[19px] font-bold text-ink">Donor responses</Text>
             {donorResponses.length === 0 ? (
@@ -284,6 +622,12 @@ export default function HospitalRequestDetailScreen() {
                               donorResponse.outcome === 'completed' ? 'text-success' : 'text-muted'
                             }`}>
                             {donorResponse.outcome === 'completed' ? 'COMPLETED' : 'NO-SHOW'}
+                          </Text>
+                        </View>
+                      ) : request.status !== 'active' ? (
+                        <View className="rounded-[10px] bg-[#EFEFED] px-3 py-2">
+                          <Text className="text-[9px] font-bold text-muted">
+                            {request.status.toUpperCase()}
                           </Text>
                         </View>
                       ) : confirmed ? (

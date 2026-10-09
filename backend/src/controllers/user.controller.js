@@ -44,6 +44,15 @@ export async function getCurrentUser(request, response) {
   response.json({ data: { user } });
 }
 
+export async function updateAccountProfile(request, response) {
+  const token = getBearerToken(request);
+  if (!token) throw new AppError('A ****** token is required', 401);
+
+  const currentUser = await userService.authenticateUserToken(token);
+  const user = await userService.updateAccountProfile(currentUser._id, request.body);
+  response.json({ data: { user } });
+}
+
 export async function updateNotificationPreferences(request, response) {
   const token = getBearerToken(request);
   if (!token) throw new AppError('A Bearer authentication token is required', 401);

@@ -242,6 +242,14 @@ td small { display: block; margin-top: 3px; color: #9d9591; font-size: 8px; }
 .user-status.verified, .user-status.active { background: var(--green-soft); color: var(--green); }
 .user-status.pending { background: var(--gold-soft); color: var(--gold); }
 .user-status.rejected { background: var(--red-soft); color: var(--red); }
+.user-status.suspended { background: var(--red-soft); color: var(--red-dark); }
+.user-actions-cell { display: grid; gap: 5px; }
+.user-action-buttons { display: flex; align-items: center; gap: 6px; }
+.users-table .user-action-button { height: 30px; padding: 0 9px; font-size: 9px; }
+.button.danger { border: 1px solid #e6c6c8; background: var(--red-soft); color: var(--red-dark); }
+.button.danger:hover { border-color: #d9a9ad; background: #f3dede; }
+.users-table .user-action-button:disabled { cursor: wait; opacity: .6; }
+.user-action-error { max-width: 210px; color: var(--red-dark); font-size: 9px; white-space: normal; }
 .users-pagination { display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #f0ecea; padding: 10px 16px; color: var(--muted); font-size: 10px; }
 .users-pagination > div { display: flex; gap: 8px; }
 .users-pagination .button { height: 34px; font-size: 10px; }

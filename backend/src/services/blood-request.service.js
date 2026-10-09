@@ -5,6 +5,7 @@ import {
     COMPATIBLE_DONOR_BLOOD_TYPES,
     DONOR_SEARCH_RADIUS_KM,
 } from '../constants/blood-compatibility.js';
+import { BLOOD_TYPES } from '../constants/blood-types.js';
 import { AIResult } from '../models/ai-result.model.js';
 import { BloodRequest } from '../models/blood-request.model.js';
 import { DonorRequestActivity } from '../models/donor-request-activity.model.js';
@@ -121,6 +122,97 @@ export async function getHospitalBloodRequest(requestId, hospitalId) {
   };
 }
 
+export async function updateHospitalBloodRequest(requestId, hospitalId, payload = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new AppError('Request updates must be provided as an object', 400);
+  }
+
+  const request = await BloodRequest.findOne({ _id: requestId, hospitalId });
+  if (!request) throw new AppError('Blood request not found', 404);
+  if (request.status !== 'active') {
+    throw new AppError('Only active blood requests can be edited', 409);
+  }
+
+  const has = (field) => Object.hasOwn(payload, field);
+  const updates = {};
+
+  if (has('bloodType')) updates.bloodType = payload.bloodType;
+  if (has('unitsNeeded')) updates.unitsNeeded = payload.unitsNeeded;
+  if (has('urgency')) {
+    updates.urgency = payload.urgency;
+    if (payload.urgency !== request.urgency) {
+      const hoursUntilNeeded = { standard: 24, urgent: 6, critical: 2 }[payload.urgency];
+      updates.neededBy = new Date(Date.now() + hoursUntilNeeded * 60 * 60 * 1000);
+    }
+  }
+  if (has('internalReference')) {
+    updates.internalReference =
+      typeof payload.internalReference === 'string' ? payload.internalReference.trim() : payload.internalReference;
+  }
+  if (has('ward')) {
+    const ward = typeof payload.ward === 'string' ? payload.ward.trim() : payload.ward;
+    updates.ward = ward || undefined;
+  }
+  if (has('rewardAmount')) {
+    updates.rewardAmount = payload.rewardAmount == null ? undefined : payload.rewardAmount;
+    updates.rewardCurrency = payload.rewardAmount == null ? undefined : 'XAF';
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new AppError('Provide at least one request field to update', 400);
+  }
+
+  if (
+    (has('bloodType') && !BLOOD_TYPES.includes(updates.bloodType)) ||
+    (has('unitsNeeded') &&
+      (!Number.isInteger(updates.unitsNeeded) || updates.unitsNeeded < 1 || updates.unitsNeeded > 20)) ||
+    (has('urgency') && !['standard', 'urgent', 'critical'].includes(updates.urgency)) ||
+    (has('internalReference') &&
+      (typeof updates.internalReference !== 'string' ||
+        updates.internalReference.length < 1 ||
+        updates.internalReference.length > 100)) ||
+    (has('ward') &&
+      updates.ward !== undefined &&
+      (typeof updates.ward !== 'string' || updates.ward.length > 120)) ||
+    (has('rewardAmount') &&
+      updates.rewardAmount !== undefined &&
+      (!Number.isFinite(updates.rewardAmount) ||
+        updates.rewardAmount < 0 ||
+        updates.rewardAmount > 999999999))
+  ) {
+    throw new AppError('One or more request fields are invalid', 400);
+  }
+
+  const changesMatchingCriteria =
+    (has('bloodType') && updates.bloodType !== request.bloodType) ||
+    (has('urgency') && updates.urgency !== request.urgency);
+  if (
+    changesMatchingCriteria &&
+    (await DonorRequestActivity.exists({ requestId: request._id }))
+  ) {
+    throw new AppError(
+      'Blood type and urgency cannot be changed after donors have been notified. Cancel this request and create a new one instead.',
+      409,
+    );
+  }
+
+  Object.assign(request, updates);
+  await request.save();
+  return request;
+}
+
+export async function cancelHospitalBloodRequest(requestId, hospitalId) {
+  const request = await BloodRequest.findOne({ _id: requestId, hospitalId });
+  if (!request) throw new AppError('Blood request not found', 404);
+  if (request.status !== 'active') {
+    throw new AppError('Only active blood requests can be cancelled', 409);
+  }
+
+  request.status = 'cancelled';
+  await request.save();
+  return request;
+}
+
 function calculateAge(dateOfBirth) {
   if (!dateOfBirth) return undefined;
 
@@ -231,6 +323,7 @@ export async function findHospitalRequestDonorMatches(requestId, hospitalId) {
         spherical: true,
         query: {
           role: 'donor',
+          accountStatus: { $ne: 'suspended' },
           bloodType: { $in: compatibleBloodTypes },
           location: { $exists: true },
         },

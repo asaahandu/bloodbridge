@@ -17,8 +17,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DonorScreenHeader, ProfileSection } from '@/components/donor-tabs';
 import { DonorVerificationModal } from '@/components/donor-verification/DonorVerificationModal';
 import { registerPushNotificationsForCurrentDevice } from '@/components/notifications/PushNotificationRegistrar';
+import { AccountContactEditor } from '@/components/AccountContactEditor';
 import {
     type DonorAvailabilityPreset,
+    updateAccountProfile,
     updateDonorDonationProfile,
     updateNotificationPreferences,
 } from '@/lib/api';
@@ -73,7 +75,7 @@ function PreferenceRow({ description, last, onValueChange, title, value }: Prefe
 
 export default function DonorProfileScreen() {
   const router = useRouter();
-  const { loading, user } = useDonorSession();
+  const { loading, setUser, user } = useDonorSession();
   const [pushAlerts, setPushAlerts] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [whatsappAlerts, setWhatsappAlerts] = useState(false);
@@ -167,6 +169,17 @@ export default function DonorProfileScreen() {
         preferenceError instanceof Error ? preferenceError.message : 'Please try again.',
       );
     }
+  };
+
+  const saveContactProfile = async (profile: {
+    cityRegion: string;
+    email: string;
+    phone: string;
+  }) => {
+    if (!user) throw new Error('Donor account details are not available. Try refreshing the profile.');
+    const updatedUser = await updateAccountProfile(user, profile);
+    await saveAuthenticatedUser(updatedUser);
+    setUser(updatedUser);
   };
 
   const signOut = async () => {
@@ -419,9 +432,21 @@ export default function DonorProfileScreen() {
           />
         </ProfileSection>
 
-        <ProfileSection title="Account">
-          <DetailRow icon="call-outline" label="Phone" value={user?.phone ?? 'Not available'} />
-          <DetailRow icon="mail-outline" label="Email" last value={user?.email ?? 'Not available'} />
+        <ProfileSection
+          description="Keep your contact details and home area up to date."
+          title="Account details">
+          {user ? (
+            <AccountContactEditor
+              cityRegion={user.cityRegion}
+              email={user.email}
+              onSave={saveContactProfile}
+              phone={user.phone}
+            />
+          ) : (
+            <Text className="py-4 text-xs font-semibold text-muted">
+              {loading ? 'Loading account details...' : 'Account details are unavailable.'}
+            </Text>
+          )}
         </ProfileSection>
 
         <Pressable

@@ -39,6 +39,25 @@ export async function getHospitalBloodRequest(request, response) {
   response.json({ data: bloodRequest });
 }
 
+export async function updateHospitalBloodRequest(request, response) {
+  const hospital = await getAuthenticatedHospital(request);
+  const bloodRequest = await bloodRequestService.updateHospitalBloodRequest(
+    request.params.requestId,
+    hospital._id,
+    request.body,
+  );
+  response.json({ data: bloodRequest });
+}
+
+export async function cancelHospitalBloodRequest(request, response) {
+  const hospital = await getAuthenticatedHospital(request);
+  const bloodRequest = await bloodRequestService.cancelHospitalBloodRequest(
+    request.params.requestId,
+    hospital._id,
+  );
+  response.json({ data: bloodRequest });
+}
+
 export async function getHospitalDonorResponseDetail(request, response) {
   const hospital = await getAuthenticatedHospital(request);
   const detail = await bloodRequestService.getHospitalDonorResponseDetail(

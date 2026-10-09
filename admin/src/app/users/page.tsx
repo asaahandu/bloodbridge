@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { Icon } from "@/components/icons";
 import { AdminHospitalVerificationBadge } from "@/components/admin-page";
 import { MobileNavigation, Sidebar } from "@/components/sidebar";
+import { UserActions } from "./user-actions";
 import {
   AdminUsersDataError,
   getAdminUsers,
@@ -45,16 +46,21 @@ function UsersTable({ data }: { data: AdminUsersData }) {
   return <section className="panel users-panel" aria-label="Registered users">
     <div className="panel-heading"><div><h2>All users</h2><p>Donors and hospital accounts registered on BloodBridge</p></div><span className="database-label">{numberFormatter.format(data.total)} total</span></div>
     <div className="table-scroll"><table className="users-table">
-      <thead><tr><th>Name</th><th>Role</th><th>Contact</th><th>Location</th><th>Blood type</th><th>Status</th><th>Joined</th></tr></thead>
+      <thead><tr><th>Name</th><th>Role</th><th>Contact</th><th>Location</th><th>Blood type</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
       <tbody>{data.users.length ? data.users.map((user) => <tr key={user.id}>
         <td><span className="hospital-name-row"><strong className="user-name">{user.fullName}</strong>{user.role === "hospital" ? <AdminHospitalVerificationBadge status={user.hospitalVerificationStatus} /> : null}</span></td>
         <td><span className={`user-role ${user.role}`}>{user.role}</span></td>
         <td><strong className="user-contact">{user.email}</strong><small>{user.phone}</small></td>
         <td>{user.cityRegion}</td>
         <td>{user.role === "donor" ? <span className="blood-badge table-badge">{user.bloodType ?? "—"}</span> : "—"}</td>
-        <td>{user.role === "hospital" ? <span className={`user-status ${user.hospitalVerificationStatus ?? "unverified"}`}>{user.hospitalVerificationStatus ?? "unverified"}</span> : <span className="user-status active">Active</span>}</td>
+        <td>{user.suspended
+          ? <span className="user-status suspended">Suspended</span>
+          : user.role === "hospital"
+            ? <span className={`user-status ${user.hospitalVerificationStatus ?? "unverified"}`}>{user.hospitalVerificationStatus ?? "unverified"}</span>
+            : <span className="user-status active">Active</span>}</td>
         <td>{dateFormatter.format(new Date(user.createdAt))}</td>
-      </tr>) : <tr><td className="empty-table" colSpan={7}>There are no registered users yet.</td></tr>}</tbody>
+        <td><UserActions userId={user.id} fullName={user.fullName} suspended={user.suspended} /></td>
+      </tr>) : <tr><td className="empty-table" colSpan={8}>There are no registered users yet.</td></tr>}</tbody>
     </table></div>
     <footer className="users-pagination">
       <span>Showing {numberFormatter.format(firstRecord)}–{numberFormatter.format(lastRecord)} of {numberFormatter.format(data.total)}</span>

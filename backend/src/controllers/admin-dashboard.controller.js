@@ -40,6 +40,29 @@ export async function getAdminUsers(request, response) {
   response.json({ data: users });
 }
 
+export async function updateAdminUserStatus(request, response) {
+  if (!/^[a-f\d]{24}$/i.test(request.params.userId)) {
+    throw new AppError('User not found', 404);
+  }
+  const { suspended } = request.body ?? {};
+  if (typeof suspended !== 'boolean') {
+    throw new AppError('Suspended must be true or false', 400);
+  }
+  const user = await adminDashboardService.setAdminUserSuspended(
+    request.params.userId,
+    suspended,
+  );
+  response.json({ data: user });
+}
+
+export async function deleteAdminUser(request, response) {
+  if (!/^[a-f\d]{24}$/i.test(request.params.userId)) {
+    throw new AppError('User not found', 404);
+  }
+  const user = await adminDashboardService.deleteAdminUser(request.params.userId);
+  response.json({ data: user });
+}
+
 function getPage(request) {
   const pageValue = request.query.page ?? '1';
   const page = Number(pageValue);

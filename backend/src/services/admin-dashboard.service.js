@@ -2,8 +2,14 @@ import mongoose from 'mongoose';
 
 import { BloodRequest } from '../models/blood-request.model.js';
 import { Campaign } from '../models/campaign.model.js';
+import { AIResult } from '../models/ai-result.model.js';
+import { Conversation } from '../models/conversation.model.js';
 import { DonorRequestActivity } from '../models/donor-request-activity.model.js';
 import { KycRequest } from '../models/kyc-request.model.js';
+import { Message } from '../models/message.model.js';
+import { Notification } from '../models/notification.model.js';
+import { SupportConversation } from '../models/support-conversation.model.js';
+import { SupportMessage } from '../models/support-message.model.js';
 import { User } from '../models/user.model.js';
 import { AppError } from '../utils/app-error.js';
 import { env } from '../config/env.js';
@@ -21,7 +27,7 @@ export async function getAdminUsers(page = 1) {
   ]);
   const resolvedPage = Math.min(page, Math.max(1, Math.ceil(total / ADMIN_USERS_PAGE_SIZE)));
   const users = await User.find({})
-    .select('fullName email phone role cityRegion bloodType hospitalVerificationStatus createdAt')
+    .select('fullName email phone role cityRegion bloodType hospitalVerificationStatus accountStatus createdAt')
     .sort({ createdAt: -1, _id: -1 })
     .skip((resolvedPage - 1) * ADMIN_USERS_PAGE_SIZE)
     .limit(ADMIN_USERS_PAGE_SIZE)
@@ -34,6 +40,7 @@ export async function getAdminUsers(page = 1) {
       email: user.email,
       phone: user.phone,
       role: user.role,
+      suspended: user.accountStatus === 'suspended',
       cityRegion: user.cityRegion,
       ...(user.bloodType ? { bloodType: user.bloodType } : {}),
       ...(user.role === 'hospital'
@@ -47,6 +54,84 @@ export async function getAdminUsers(page = 1) {
     page: resolvedPage,
     pageSize: ADMIN_USERS_PAGE_SIZE,
   };
+}
+
+export async function setAdminUserSuspended(userId, suspended) {
+  const update = suspended
+    ? {
+        $set: { accountStatus: 'suspended', authSessions: [] },
+        $unset: { authTokenHash: 1, locationTrackingTokenHash: 1 },
+      }
+    : { $set: { accountStatus: 'active' } };
+  const user = await User.findByIdAndUpdate(userId, update, { new: true })
+    .select('_id accountStatus')
+    .lean();
+
+  if (!user) throw new AppError('User not found', 404);
+  return { id: String(user._id), suspended: user.accountStatus === 'suspended' };
+}
+
+export async function deleteAdminUser(userId) {
+  const session = await mongoose.startSession();
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  try {
+    let deletedUser = false;
+    await session.withTransaction(async () => {
+      const user = await User.findById(userObjectId).select('_id').session(session).lean();
+      if (!user) throw new AppError('User not found', 404);
+
+      const hospitalRequests = await BloodRequest.find({ hospitalId: userObjectId })
+        .select('_id')
+        .session(session)
+        .lean();
+      const requestIds = hospitalRequests.map((request) => request._id);
+      const supportConversations = await SupportConversation.find({ userId: userObjectId })
+        .select('_id')
+        .session(session)
+        .lean();
+      const supportConversationIds = supportConversations.map(
+        (conversation) => conversation._id,
+      );
+      const participantOrRequestFilter = {
+        $or: [
+          { hospitalId: userObjectId },
+          { donorId: userObjectId },
+          { requestId: { $in: requestIds } },
+        ],
+      };
+
+      await Campaign.deleteMany({ hospitalId: userObjectId }, { session });
+      await KycRequest.deleteMany({ hospitalId: userObjectId }, { session });
+      await BloodRequest.deleteMany({ hospitalId: userObjectId }, { session });
+      await DonorRequestActivity.deleteMany(participantOrRequestFilter, { session });
+      await Conversation.deleteMany(participantOrRequestFilter, { session });
+      await Message.deleteMany(participantOrRequestFilter, { session });
+      await AIResult.deleteMany(participantOrRequestFilter, { session });
+      await Notification.deleteMany(
+        { $or: [{ recipientId: userObjectId }, { requestId: { $in: requestIds } }] },
+        { session },
+      );
+      await SupportMessage.deleteMany(
+        {
+          $or: [
+            { senderId: userObjectId },
+            { conversationId: { $in: supportConversationIds } },
+          ],
+        },
+        { session },
+      );
+      await SupportConversation.deleteMany({ userId: userObjectId }, { session });
+
+      const deletion = await User.deleteOne({ _id: userObjectId }, { session });
+      deletedUser = deletion.deletedCount === 1;
+      if (!deletedUser) throw new AppError('User not found', 404);
+    });
+
+    return { id: userId };
+  } finally {
+    await session.endSession();
+  }
 }
 
 export async function getAdminBloodRequests(page = 1) {
